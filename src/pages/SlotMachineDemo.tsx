@@ -1,0 +1,297 @@
+import { useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowLeft, Settings, Volume2, VolumeX } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import SlotMachine from '@/components/SlotMachine'
+import { useShakeDetection } from '@/hooks/useShakeDetection'
+import { mealsApi, restaurantsApi } from '@/services/api'
+import { mealsToSlotItems, restaurantsToSlotItems, createSampleSlotItems } from '@/components/SlotMachine/utils'
+import type { SlotItem } from '@/components/SlotMachine/types'
+import { cn } from '@/utils/cn'
+
+type DemoMode = 'meals' | 'restaurants' | 'mixed' | 'sample'
+
+export default function SlotMachineDemo() {
+  const navigate = useNavigate()
+  const [mode, setMode] = useState<DemoMode>('sample')
+  const [soundEnabled, setSoundEnabled] = useState(true)
+  const [selectedItem, setSelectedItem] = useState<SlotItem | null>(null)
+  const [isShakeTriggered, setIsShakeTriggered] = useState(false)
+
+  // Shake detection
+  const { isShaking } = useShakeDetection({
+    enabled: true,
+    threshold: 12,
+    onShakeDetected: useCallback(() => {
+      setIsShakeTriggered(true)
+    }, [])
+  })
+
+  // Fetch meals using demo endpoint (no auth required)
+  const { data: meals = [], isLoading: isLoadingMeals } = useQuery({
+    queryKey: ['demo-meals'],
+    queryFn: () => mealsApi.getDemoMeals(),
+    enabled: mode === 'meals' || mode === 'mixed'
+  })
+
+  // Fetch restaurants
+  const { data: restaurants = [], isLoading: isLoadingRestaurants } = useQuery({
+    queryKey: ['restaurants'],
+    queryFn: () => restaurantsApi.getRestaurants(),
+    enabled: mode === 'restaurants' || mode === 'mixed'
+  })
+
+  // Prepare slot items based on mode
+  const slotItems: SlotItem[] = (() => {
+    switch (mode) {
+      case 'meals':
+        return mealsToSlotItems(meals)
+      case 'restaurants':
+        return restaurantsToSlotItems(restaurants)
+      case 'mixed':
+        return [
+          ...mealsToSlotItems(meals.slice(0, 5)),
+          ...restaurantsToSlotItems(restaurants.slice(0, 5))
+        ]
+      case 'sample':
+      default:
+        return createSampleSlotItems()
+    }
+  })()
+
+  const isLoading = isLoadingMeals || isLoadingRestaurants
+
+  const handleSelection = useCallback((item: SlotItem) => {
+    setSelectedItem(item)
+    console.log('Selected item:', item)
+  }, [])
+
+  const handleShakeReset = useCallback(() => {
+    setIsShakeTriggered(false)
+  }, [])
+
+  const handleItemAction = () => {
+    if (selectedItem) {
+      if (selectedItem.type === 'meal') {
+        navigate(`/meal/${selectedItem.id}`)
+      } else {
+        navigate(`/restaurant/${selectedItem.id}`)
+      }
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-800">
+      {/* Header */}
+      <div className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between p-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="hidden sm:inline">Back</span>
+          </button>
+          
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            Slot Machine Demo
+          </h1>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title={soundEnabled ? 'Disable sound' : 'Enable sound'}
+            >
+              {soundEnabled ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-8 max-w-2xl">
+        {/* Mode Selection */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Choose Content Type
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { key: 'sample', label: 'Sample Data', emoji: '🎯' },
+              { key: 'meals', label: 'Meals', emoji: '🍽️' },
+              { key: 'restaurants', label: 'Restaurants', emoji: '🏪' },
+              { key: 'mixed', label: 'Mixed', emoji: '🎲' },
+            ].map(({ key, label, emoji }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key as DemoMode)}
+                className={cn(
+                  "p-3 rounded-lg text-sm font-medium transition-all duration-200",
+                  mode === key
+                    ? "bg-purple-500 text-white shadow-lg"
+                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-600"
+                )}
+              >
+                <div className="text-lg mb-1">{emoji}</div>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Loading State */}
+        {isLoading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading items...</p>
+          </div>
+        )}
+
+        {/* Slot Machine */}
+        {!isLoading && slotItems.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <SlotMachine
+              items={slotItems}
+              onSelection={handleSelection}
+              isShakeTriggered={isShakeTriggered}
+              onShakeReset={handleShakeReset}
+              soundEnabled={soundEnabled}
+              spinDuration={3000}
+              celebrationDuration={2500}
+              reelCount={3}
+            />
+          </motion.div>
+        )}
+
+        {/* Empty State */}
+        {!isLoading && slotItems.length === 0 && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🎰</div>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              No items available
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Try switching to a different content type or check your connection.
+            </p>
+            <button
+              onClick={() => setMode('sample')}
+              className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+            >
+              Use Sample Data
+            </button>
+          </div>
+        )}
+
+        {/* Selected Item Detail */}
+        <AnimatePresence>
+          {selectedItem && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="mt-8 p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700"
+            >
+              <div className="text-center">
+                <div className="text-4xl mb-3">{selectedItem.emoji || '🎯'}</div>
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  {selectedItem.name}
+                </h3>
+                {selectedItem.description && (
+                  <p className="text-gray-600 dark:text-gray-400 mb-4">
+                    {selectedItem.description}
+                  </p>
+                )}
+                
+                <div className="flex flex-wrap justify-center gap-2 mb-4">
+                  {selectedItem.category && (
+                    <span className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-sm">
+                      {selectedItem.category}
+                    </span>
+                  )}
+                  {selectedItem.cuisine && (
+                    <span className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full text-sm">
+                      {selectedItem.cuisine}
+                    </span>
+                  )}
+                  {selectedItem.difficulty && (
+                    <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-sm">
+                      {selectedItem.difficulty}
+                    </span>
+                  )}
+                  {selectedItem.cookingTime && (
+                    <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full text-sm">
+                      {selectedItem.cookingTime}m
+                    </span>
+                  )}
+                  {selectedItem.rating && (
+                    <span className="px-3 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded-full text-sm">
+                      ⭐ {selectedItem.rating}
+                    </span>
+                  )}
+                  {selectedItem.priceRange && (
+                    <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full text-sm">
+                      {selectedItem.priceRange}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={handleItemAction}
+                    className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors font-medium"
+                  >
+                    View Details
+                  </button>
+                  <button
+                    onClick={() => setSelectedItem(null)}
+                    className="px-6 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors font-medium"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Instructions */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800"
+        >
+          <h3 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">
+            How to use:
+          </h3>
+          <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+            <li>• Click the "Spin" button to start the slot machine</li>
+            <li>• Shake your device to trigger the slot machine automatically</li>
+            <li>• Click "Stop" while spinning to force an early selection</li>
+            <li>• Switch between different content types using the buttons above</li>
+            <li>• Toggle sound effects using the volume button in the header</li>
+          </ul>
+        </motion.div>
+
+        {/* Debug Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm">
+            <h4 className="font-semibold mb-2">Debug Info:</h4>
+            <div className="space-y-1 text-gray-600 dark:text-gray-400">
+              <div>Mode: {mode}</div>
+              <div>Items: {slotItems.length}</div>
+              <div>Is Shaking: {isShaking ? 'Yes' : 'No'}</div>
+              <div>Sound Enabled: {soundEnabled ? 'Yes' : 'No'}</div>
+              <div>Selected: {selectedItem?.name || 'None'}</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

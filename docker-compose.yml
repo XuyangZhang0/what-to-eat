@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  # Backend API server
+  backend:
+    build:
+      context: ./server
+      target: development
+    container_name: what-to-eat-backend-dev
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_PATH=/app/data/database.db
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=1000
+    volumes:
+      - ./server:/app
+      - backend_data:/app/data
+      - /app/node_modules  # Anonymous volume to prevent node_modules override
+    networks:
+      - what-to-eat-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend development server
+  frontend:
+    build:
+      context: .
+      target: development
+    container_name: what-to-eat-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:3001
+    volumes:
+      - .:/app
+      - /app/node_modules  # Anonymous volume to prevent node_modules override
+    networks:
+      - what-to-eat-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5173/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  backend_data:
+    driver: local
+
+networks:
+  what-to-eat-network:
+    driver: bridge

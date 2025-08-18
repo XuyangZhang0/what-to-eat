@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # Backend API server
+  backend:
+    build:
+      context: ./server
+      target: production
+    container_name: what-to-eat-backend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_PATH=/app/data/database.db
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - what-to-eat-network
+    healthcheck:
+      test: ["CMD", "./healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Frontend production server
+  frontend:
+    build:
+      context: .
+      target: production
+    container_name: what-to-eat-frontend
+    restart: always
+    environment:
+      - NODE_ENV=production
+    networks:
+      - what-to-eat-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: what-to-eat-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - what-to-eat-network
+    depends_on:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+
+  # Monitoring and logging (optional)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: what-to-eat-watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 2 * * *  # Check for updates daily at 2 AM
+      - WATCHTOWER_INCLUDE_STOPPED=true
+    networks:
+      - what-to-eat-network
+
+volumes:
+  backend_data:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  what-to-eat-network:
+    driver: bridge

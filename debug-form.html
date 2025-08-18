@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Restaurant Form</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+        input { margin: 5px; padding: 8px; width: 200px; }
+        button { padding: 10px 20px; margin: 10px; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>Restaurant Form Debug</h1>
+    
+    <form id="restaurantForm">
+        <div>
+            <label>Restaurant Name (required):</label><br>
+            <input type="text" id="name" placeholder="Enter restaurant name">
+        </div>
+        
+        <div>
+            <label>Cuisine Type:</label><br>
+            <input type="text" id="cuisine_type" placeholder="Enter cuisine type">
+        </div>
+        
+        <div class="debug">
+            <h3>Form State:</h3>
+            <div id="formState"></div>
+        </div>
+        
+        <button type="submit" id="submitBtn" disabled>Save Restaurant</button>
+    </form>
+    
+    <script>
+        // Simple validation logic matching the React hook
+        const validationSchema = {
+            name: { required: true, minLength: 1, maxLength: 100 },
+            cuisine_type: { maxLength: 50 }
+        };
+        
+        const formData = {
+            name: '',
+            cuisine_type: ''
+        };
+        
+        const errors = {};
+        
+        function validateField(field, value) {
+            const rule = validationSchema[field];
+            if (!rule) return null;
+            
+            // Required validation
+            if (rule.required && (!value || !value.trim())) {
+                return field + ' is required';
+            }
+            
+            // Skip other validations if field is empty and not required
+            if (!value || !value.trim()) {
+                return null;
+            }
+            
+            // String validations
+            if (rule.minLength && value.length < rule.minLength) {
+                return field + ' must be at least ' + rule.minLength + ' characters';
+            }
+            if (rule.maxLength && value.length > rule.maxLength) {
+                return field + ' must not exceed ' + rule.maxLength + ' characters';
+            }
+            
+            return null;
+        }
+        
+        function validateAll() {
+            const newErrors = {};
+            for (const field of Object.keys(validationSchema)) {
+                const value = formData[field];
+                const error = validateField(field, value);
+                if (error) {
+                    newErrors[field] = error;
+                }
+            }
+            return newErrors;
+        }
+        
+        function isValid() {
+            // Check if there are any current errors
+            if (Object.keys(errors).length > 0) {
+                return false;
+            }
+            
+            // Check if all required fields have valid values
+            for (const field of Object.keys(validationSchema)) {
+                const rule = validationSchema[field];
+                const value = formData[field];
+                
+                if (rule.required) {
+                    if (!value || !value.trim()) {
+                        return false;
+                    }
+                }
+            }
+            
+            return true;
+        }
+        
+        function updateFormState() {
+            Object.assign(errors, validateAll());
+            
+            const stateDiv = document.getElementById('formState');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            stateDiv.innerHTML = `
+                <strong>Data:</strong> ${JSON.stringify(formData, null, 2)}<br>
+                <strong>Errors:</strong> ${JSON.stringify(errors, null, 2)}<br>
+                <strong>Is Valid:</strong> <span class="${isValid() ? 'success' : 'error'}">${isValid()}</span><br>
+                <strong>Error Count:</strong> ${Object.keys(errors).length}<br>
+                <strong>Required Fields Check:</strong> Name: "${formData.name}" (${formData.name && formData.name.trim() ? 'OK' : 'FAIL'})
+            `;
+            
+            submitBtn.disabled = !isValid();
+        }
+        
+        // Add event listeners
+        document.getElementById('name').addEventListener('input', function(e) {
+            formData.name = e.target.value;
+            updateFormState();
+        });
+        
+        document.getElementById('cuisine_type').addEventListener('input', function(e) {
+            formData.cuisine_type = e.target.value;
+            updateFormState();
+        });
+        
+        // Initial state
+        updateFormState();
+    </script>
+</body>
+</html>
