@@ -7,6 +7,8 @@ import { useShakeSettings } from '@/hooks/useShakeSettings'
 import ShakeButton from '@/components/ShakeButton'
 import QuickActions from './QuickActions'
 import RecentSuggestions from './RecentSuggestions'
+import { getRandomSuggestion } from '@/services/api'
+import { Meal } from '@/types'
 
 export default function Home() {
   const navigate = useNavigate()
@@ -47,13 +49,14 @@ export default function Home() {
     setHasShaken(true)
     
     try {
-      // Simulate API call for random suggestion
-      await new Promise(resolve => setTimeout(resolve, 800))
+      // Get random meal suggestion
+      const meal = await getRandomSuggestion('meals') as Meal;
       
-      // Navigate to search with random parameter
-      navigate('/search?random=true&intensity=' + Math.round(currentIntensity))
+      // Navigate to the meal detail page
+      navigate(`/meals/${meal.id}?source=random&intensity=${Math.round(currentIntensity)}`);
     } catch (error) {
       console.error('Failed to get random suggestion:', error)
+      // TODO: Show a user-friendly error message
     } finally {
       setIsLoading(false)
       // Reset shake state after a delay

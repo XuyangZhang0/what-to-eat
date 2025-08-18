@@ -28,7 +28,11 @@
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth status)",
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" auth login)",
       "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" repo create what-to-eat --public --description \"A full-stack web application that helps users decide what to eat by managing meals, restaurants, and providing randomized suggestions\" --push --source=.)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git push origin master)",
+      "Bash(mkdir -p .github/workflows)",
+      "Bash(git add .github/workflows/ci.yml)",
+      "Bash(\"C:\\Program Files\\GitHub CLI\\gh.exe\" workflow list)"
     ],
     "deny": [],
     "ask": []
