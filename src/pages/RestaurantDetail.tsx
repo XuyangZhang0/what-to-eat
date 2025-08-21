@@ -13,6 +13,7 @@ import {
   DollarSign,
   Menu
 } from 'lucide-react'
+import { restaurantsApi } from '@/services/api'
 import { Restaurant } from '@/types'
 
 // Mock restaurant data - replace with actual API call
@@ -52,11 +53,32 @@ const mockMenuHighlights = [
 export default function RestaurantDetail() {
   const { id } = useParams()
   const [isFavorite, setIsFavorite] = useState(mockRestaurant.isFavorite)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'hours'>('overview')
 
-  const handleFavoriteToggle = () => {
-    setIsFavorite(!isFavorite)
-    // TODO: Update favorite status in backend/storage
+  const handleFavoriteToggle = async () => {
+    if (!id || isTogglingFavorite) return
+    
+    setIsTogglingFavorite(true)
+    try {
+      const result = await restaurantsApi.toggleFavorite(id)
+      setIsFavorite(result.isFavorite)
+      
+      // Dispatch custom event to notify other components of favorite update
+      window.dispatchEvent(new CustomEvent('favoritesUpdated', {
+        detail: {
+          itemId: id,
+          itemType: 'restaurant',
+          itemName: mockRestaurant.name,
+          isFavorite: result.isFavorite
+        }
+      }))
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error)
+      // Revert the UI state on error
+    } finally {
+      setIsTogglingFavorite(false)
+    }
   }
 
   const handleShare = () => {

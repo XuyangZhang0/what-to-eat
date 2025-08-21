@@ -1,20 +1,21 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowLeft, Settings, Volume2, VolumeX } from 'lucide-react'
+import { ArrowLeft, Settings, Volume2, VolumeX, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import SlotMachine from '@/components/SlotMachine'
 import { useShakeDetection } from '@/hooks/useShakeDetection'
-import { mealsApi, restaurantsApi } from '@/services/api'
-import { mealsToSlotItems, restaurantsToSlotItems, createSampleSlotItems } from '@/components/SlotMachine/utils'
+import { favoritesApi } from '@/services/api'
+import { favoriteMealsToSlotItems, favoriteRestaurantsToSlotItems } from '@/components/SlotMachine/utils'
 import type { SlotItem } from '@/components/SlotMachine/types'
 import { cn } from '@/utils/cn'
 
-type DemoMode = 'meals' | 'restaurants' | 'mixed' | 'sample'
+type DemoMode = 'meals' | 'restaurants' | 'mixed'
 
 export default function SlotMachineDemo() {
   const navigate = useNavigate()
-  const [mode, setMode] = useState<DemoMode>('sample')
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<DemoMode>('mixed')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [selectedItem, setSelectedItem] = useState<SlotItem | null>(null)
   const [isShakeTriggered, setIsShakeTriggered] = useState(false)
@@ -28,35 +29,39 @@ export default function SlotMachineDemo() {
     }, [])
   })
 
-  // Fetch meals using demo endpoint (no auth required)
+  // Fetch favorite meals only
   const { data: meals = [], isLoading: isLoadingMeals } = useQuery({
-    queryKey: ['demo-meals'],
-    queryFn: () => mealsApi.getDemoMeals(),
-    enabled: mode === 'meals' || mode === 'mixed'
+    queryKey: ['favorite-meals'],
+    queryFn: () => favoritesApi.getFavoriteMeals(),
+    enabled: mode === 'meals' || mode === 'mixed',
+    staleTime: 30 * 1000, // Consider data stale after 30 seconds
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always' // Always refetch when component mounts
   })
 
-  // Fetch restaurants
+  // Fetch favorite restaurants only
   const { data: restaurants = [], isLoading: isLoadingRestaurants } = useQuery({
-    queryKey: ['restaurants'],
-    queryFn: () => restaurantsApi.getRestaurants(),
-    enabled: mode === 'restaurants' || mode === 'mixed'
+    queryKey: ['favorite-restaurants'],
+    queryFn: () => favoritesApi.getFavoriteRestaurants(),
+    enabled: mode === 'restaurants' || mode === 'mixed',
+    staleTime: 30 * 1000, // Consider data stale after 30 seconds
+    refetchOnWindowFocus: true,
+    refetchOnMount: 'always' // Always refetch when component mounts
   })
 
-  // Prepare slot items based on mode
+  // Prepare slot items based on mode (favorites only)
   const slotItems: SlotItem[] = (() => {
     switch (mode) {
       case 'meals':
-        return mealsToSlotItems(meals)
+        return favoriteMealsToSlotItems(meals)
       case 'restaurants':
-        return restaurantsToSlotItems(restaurants)
+        return favoriteRestaurantsToSlotItems(restaurants)
       case 'mixed':
-        return [
-          ...mealsToSlotItems(meals.slice(0, 5)),
-          ...restaurantsToSlotItems(restaurants.slice(0, 5))
-        ]
-      case 'sample':
       default:
-        return createSampleSlotItems()
+        return [
+          ...favoriteMealsToSlotItems(meals),
+          ...favoriteRestaurantsToSlotItems(restaurants)
+        ]
     }
   })()
 
@@ -71,6 +76,34 @@ export default function SlotMachineDemo() {
     setIsShakeTriggered(false)
   }, [])
 
+  // Effect to listen for favorites updates from other pages
+  useEffect(() => {
+    const handleFavoriteUpdate = (event: CustomEvent) => {
+      console.log('Favorite update event received:', event.detail)
+      // Invalidate both favorites queries to refetch fresh data
+      queryClient.invalidateQueries({ queryKey: ['favorite-meals'] })
+      queryClient.invalidateQueries({ queryKey: ['favorite-restaurants'] })
+    }
+
+    // Listen for custom events indicating favorites were updated
+    window.addEventListener('favoritesUpdated' as any, handleFavoriteUpdate)
+    
+    // Also invalidate queries when the component becomes visible again
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        queryClient.invalidateQueries({ queryKey: ['favorite-meals'] })
+        queryClient.invalidateQueries({ queryKey: ['favorite-restaurants'] })
+      }
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('favoritesUpdated' as any, handleFavoriteUpdate)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [queryClient])
+
   const handleItemAction = () => {
     if (selectedItem) {
       if (selectedItem.type === 'meal') {
@@ -80,6 +113,12 @@ export default function SlotMachineDemo() {
       }
     }
   }
+
+  const handleRefresh = useCallback(() => {
+    console.log('Manually refreshing favorites data...')
+    queryClient.invalidateQueries({ queryKey: ['favorite-meals'] })
+    queryClient.invalidateQueries({ queryKey: ['favorite-restaurants'] })
+  }, [queryClient])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-800">
@@ -95,10 +134,17 @@ export default function SlotMachineDemo() {
           </button>
           
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Slot Machine Demo
+            Favorites Slot Machine
           </h1>
           
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              title="Refresh favorites"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
               className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -114,14 +160,13 @@ export default function SlotMachineDemo() {
         {/* Mode Selection */}
         <div className="mb-8">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Choose Content Type
+            Choose Favorite Content Type
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {[
-              { key: 'sample', label: 'Sample Data', emoji: '🎯' },
-              { key: 'meals', label: 'Meals', emoji: '🍽️' },
-              { key: 'restaurants', label: 'Restaurants', emoji: '🏪' },
-              { key: 'mixed', label: 'Mixed', emoji: '🎲' },
+              { key: 'meals', label: 'Favorite Meals', emoji: '⭐🍽️' },
+              { key: 'restaurants', label: 'Favorite Restaurants', emoji: '⭐🏪' },
+              { key: 'mixed', label: 'All Favorites', emoji: '⭐🎲' },
             ].map(({ key, label, emoji }) => (
               <button
                 key={key}
@@ -171,19 +216,27 @@ export default function SlotMachineDemo() {
         {/* Empty State */}
         {!isLoading && slotItems.length === 0 && (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🎰</div>
+            <div className="text-6xl mb-4">⭐</div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              No items available
+              No favorite items found
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Try switching to a different content type or check your connection.
+              You haven't marked any items as favorites yet. Add some favorites and come back!
             </p>
-            <button
-              onClick={() => setMode('sample')}
-              className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
-            >
-              Use Sample Data
-            </button>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => navigate('/search')}
+                className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+              >
+                Discover Items
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Go Home
+              </button>
+            </div>
           </div>
         )}
 
@@ -270,10 +323,11 @@ export default function SlotMachineDemo() {
             How to use:
           </h3>
           <ul className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
-            <li>• Click the "Spin" button to start the slot machine</li>
+            <li>• Click the "Spin" button to randomly select from your favorites</li>
             <li>• Shake your device to trigger the slot machine automatically</li>
             <li>• Click "Stop" while spinning to force an early selection</li>
-            <li>• Switch between different content types using the buttons above</li>
+            <li>• Only items marked as favorites will appear in the slot machine</li>
+            <li>• Switch between favorite meals, restaurants, or both</li>
             <li>• Toggle sound effects using the volume button in the header</li>
           </ul>
         </motion.div>
