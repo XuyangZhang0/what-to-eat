@@ -181,6 +181,48 @@ export class MealsController {
     });
   });
 
+  // Public meal viewing endpoint - allows viewing any meal with optional authentication
+  static viewMeal = asyncHandler(async (req: Request, res: Response) => {
+    const mealId = Number(req.params.id);
+    const meal = MealModel.findById(mealId);
+
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meal not found'
+      });
+    }
+
+    // Add favorite status based on authentication
+    let mealWithFavoriteStatus = { ...meal };
+
+    if (req.user) {
+      // User is authenticated, check favorite status
+      const userId = req.user.user_id;
+      
+      if (meal.user_id === userId) {
+        // User's own meal, use the meal's is_favorite field
+        mealWithFavoriteStatus.isFavorite = meal.is_favorite === 1 || meal.is_favorite === true;
+      } else {
+        // Other user's meal, check user_favorites table
+        const favoriteStmt = db.prepare(`
+          SELECT 1 FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+        `);
+        const isFavorite = favoriteStmt.get(userId, mealId);
+        mealWithFavoriteStatus.isFavorite = !!isFavorite;
+      }
+    } else {
+      // Not authenticated, set favorite as false
+      mealWithFavoriteStatus.isFavorite = false;
+    }
+
+    res.json({
+      success: true,
+      data: mealWithFavoriteStatus
+    });
+  });
+
   // Create new meal
   static createMeal = asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
@@ -426,6 +468,7 @@ export class MealsController {
     }
 
     const mealId = Number(req.params.id);
+    const userId = req.user.user_id;
     const existingMeal = MealModel.findById(mealId);
 
     if (!existingMeal) {
@@ -435,22 +478,47 @@ export class MealsController {
       });
     }
 
-    // Check if meal belongs to user
-    if (existingMeal.user_id !== req.user.user_id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
-    }
+    let isFavorite: boolean;
 
-    const updatedMeal = MealModel.update(mealId, {
-      is_favorite: !existingMeal.is_favorite
-    });
+    // Handle favorites based on meal ownership
+    if (existingMeal.user_id === userId) {
+      // For own meals, update the meal's is_favorite field
+      const newFavoriteStatus = !existingMeal.is_favorite;
+      MealModel.update(mealId, {
+        is_favorite: newFavoriteStatus
+      });
+      isFavorite = newFavoriteStatus;
+    } else {
+      // For other users' meals, use the user_favorites table
+      const favoriteCheckStmt = db.prepare(`
+        SELECT 1 FROM user_favorites 
+        WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+      `);
+      const currentlyFavorite = favoriteCheckStmt.get(userId, mealId);
+
+      if (currentlyFavorite) {
+        // Remove from favorites
+        const deleteStmt = db.prepare(`
+          DELETE FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+        `);
+        deleteStmt.run(userId, mealId);
+        isFavorite = false;
+      } else {
+        // Add to favorites
+        const insertStmt = db.prepare(`
+          INSERT INTO user_favorites (user_id, item_type, item_id, created_at)
+          VALUES (?, 'meal', ?, datetime('now'))
+        `);
+        insertStmt.run(userId, mealId);
+        isFavorite = true;
+      }
+    }
 
     res.json({
       success: true,
-      data: updatedMeal,
-      message: `Meal ${updatedMeal?.is_favorite ? 'added to' : 'removed from'} favorites`
+      data: { isFavorite },
+      message: `Meal ${isFavorite ? 'added to' : 'removed from'} favorites`
     });
   });
 }

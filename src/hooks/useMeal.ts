@@ -26,8 +26,25 @@ export function useMeal(id: string | undefined): UseMealResult {
       setError(null)
       console.log('Fetching meal with ID:', id)
       
-      const mealData = await mealsApi.getMeal(id)
-      console.log('Successfully fetched meal:', mealData)
+      let mealData: any
+      try {
+        // First try the authenticated endpoint
+        mealData = await mealsApi.getMeal(id)
+        console.log('Successfully fetched meal (authenticated):', mealData)
+      } catch (authError: any) {
+        console.log('Authenticated request failed:', authError.status, authError.message)
+        
+        // If access denied (403) or unauthorized (401), try the public endpoint
+        if (authError.status === 403 || authError.status === 401) {
+          console.log('Trying public view endpoint...')
+          mealData = await mealsApi.viewMeal(id)
+          console.log('Successfully fetched meal (public):', mealData)
+        } else {
+          // If it's not an auth issue, re-throw the original error
+          throw authError
+        }
+      }
+      
       setMeal(mealData)
     } catch (err) {
       console.error('Error fetching meal:', {

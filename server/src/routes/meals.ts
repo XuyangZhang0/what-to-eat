@@ -29,6 +29,14 @@ router.get('/discover',
   MealsController.discoverMeals
 );
 
+// Public meal viewing endpoint - allows viewing any meal with optional authentication
+router.get('/view/:id', 
+  optionalAuth,
+  parseIdParam,
+  validateParams(idParamSchema),
+  MealsController.viewMeal
+);
+
 // All other routes require authentication
 router.use(requireAuth);
 

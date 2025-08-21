@@ -78,9 +78,14 @@ export const mealsApi = {
     return fetchApi<Meal[]>(`/meals${query}`)
   },
 
-  // Get a specific meal by ID
+  // Get a specific meal by ID (authenticated)
   async getMeal(id: string): Promise<Meal> {
     return fetchApi<Meal>(`/meals/${id}`)
+  },
+
+  // View a meal publicly (no authentication required)
+  async viewMeal(id: string): Promise<Meal> {
+    return fetchApi<Meal>(`/meals/view/${id}`)
   },
 
   // Search meals by query
