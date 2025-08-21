@@ -12,6 +12,12 @@ import { errorHandler, notFoundHandler } from '@/middleware/errorHandler.js';
 // Load environment variables
 dotenv.config();
 
+// Debug environment variables
+console.log('Environment variables loaded:');
+console.log('- PORT:', process.env.PORT);
+console.log('- NODE_ENV:', process.env.NODE_ENV);
+console.log('- GOOGLE_PLACES_API_KEY:', process.env.GOOGLE_PLACES_API_KEY ? 'Set (' + process.env.GOOGLE_PLACES_API_KEY.substring(0,10) + '...)' : 'Not set');
+
 const app = express();
 
 // Security middleware

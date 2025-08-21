@@ -24,6 +24,12 @@ router.get('/time-based', RandomController.getTimeBasedSuggestion);
 // GET /api/random/diverse - Get diverse suggestions
 router.get('/diverse', RandomController.getDiverseSuggestions);
 
+// POST /api/random/multiple - Get multiple suggestions based on user preferences
+router.post('/multiple', 
+  validateBody(randomSelectionSchema), 
+  RandomController.getMultipleSuggestions
+);
+
 // GET /api/random/personalized - Get personalized suggestions
 router.get('/personalized', RandomController.getPersonalizedSuggestions);
 

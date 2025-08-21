@@ -41,10 +41,25 @@ A feature-rich, animated slot machine component for the "What to Eat" app that p
 
 ```tsx
 import SlotMachine from '@/components/SlotMachine'
-import { createSampleSlotItems } from '@/components/SlotMachine/utils'
+import { favoriteMealsToSlotItems, favoriteRestaurantsToSlotItems } from '@/components/SlotMachine/utils'
+import { useQuery } from '@tanstack/react-query'
+import { favoritesApi } from '@/services/api'
 
 function MyComponent() {
-  const items = createSampleSlotItems()
+  const { data: meals = [] } = useQuery({
+    queryKey: ['favorite-meals'],
+    queryFn: () => favoritesApi.getFavoriteMeals(),
+  })
+
+  const { data: restaurants = [] } = useQuery({
+    queryKey: ['favorite-restaurants'],
+    queryFn: () => favoritesApi.getFavoriteRestaurants(),
+  })
+
+  const items = [
+    ...favoriteMealsToSlotItems(meals),
+    ...favoriteRestaurantsToSlotItems(restaurants)
+  ]
 
   const handleSelection = (item) => {
     console.log('Selected:', item)
@@ -88,16 +103,24 @@ function ShakeSlotMachine() {
 ### Converting Data
 
 ```tsx
-import { mealsToSlotItems, restaurantsToSlotItems } from '@/components/SlotMachine/utils'
+import { 
+  favoriteMealsToSlotItems, 
+  favoriteRestaurantsToSlotItems,
+  mealsToSlotItems, 
+  restaurantsToSlotItems 
+} from '@/components/SlotMachine/utils'
 
-// Convert meals
-const mealSlots = mealsToSlotItems(meals)
+// Convert only favorite meals
+const favoriteMealSlots = favoriteMealsToSlotItems(meals)
 
-// Convert restaurants  
-const restaurantSlots = restaurantsToSlotItems(restaurants)
+// Convert only favorite restaurants  
+const favoriteRestaurantSlots = favoriteRestaurantsToSlotItems(restaurants)
 
-// Mix both types
-const mixedSlots = [...mealSlots, ...restaurantSlots]
+// Convert all meals (including non-favorites)
+const allMealSlots = mealsToSlotItems(meals)
+
+// Mix favorite items only (recommended)
+const favoriteSlots = [...favoriteMealSlots, ...favoriteRestaurantSlots]
 ```
 
 ## Props

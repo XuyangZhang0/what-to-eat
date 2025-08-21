@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { MealsController } from '@/controllers/mealsController.js';
-import { requireAuth } from '@/middleware/auth.js';
+import { requireAuth, optionalAuth } from '@/middleware/auth.js';
 import { 
   validateBody, 
   validateQuery, 
@@ -19,9 +19,15 @@ import {
 
 const router = Router();
 
-// Demo endpoints for slot machine (no auth required)
-router.get('/demo', MealsController.getDemoMeals);
-router.get('/demo/random', MealsController.getRandomDemoMeal);
+// Discovery endpoint for cross-user meal browsing (auth optional)
+router.get('/discover', 
+  optionalAuth,
+  parseTagIds,
+  parsePagination,
+  sanitizeSearch,
+  validateQuery(searchQuerySchema), 
+  MealsController.discoverMeals
+);
 
 // All other routes require authentication
 router.use(requireAuth);

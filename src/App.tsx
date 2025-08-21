@@ -15,6 +15,10 @@ import MealDetail from './pages/MealDetail'
 import RestaurantDetail from './pages/RestaurantDetail'
 import Management from './pages/Management'
 import SlotMachineDemo from './pages/SlotMachineDemo'
+import AnimationDemo from './pages/AnimationDemo'
+import MoodBasedSuggestions from './pages/MoodBasedSuggestions'
+import SmartShoppingListPage from './pages/SmartShoppingListPage'
+import FeaturesHub from './pages/FeaturesHub'
 import Login from './pages/Login'
 
 function AppContent() {
@@ -52,16 +56,16 @@ function AppContent() {
       <AnimatePresence mode="wait">
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/search" element={
+            <Layout>
+              <Search />
+            </Layout>
+          } />
           {isAuthenticated ? (
             <>
               <Route path="/" element={
                 <Layout>
                   <Home />
-                </Layout>
-              } />
-              <Route path="/search" element={
-                <Layout>
-                  <Search />
                 </Layout>
               } />
               <Route path="/favorites" element={
@@ -94,6 +98,26 @@ function AppContent() {
               <Route path="/slot-machine" element={
                 <Layout>
                   <SlotMachineDemo />
+                </Layout>
+              } />
+              <Route path="/animation-demo" element={
+                <Layout>
+                  <AnimationDemo />
+                </Layout>
+              } />
+              <Route path="/mood-suggestions" element={
+                <Layout>
+                  <MoodBasedSuggestions />
+                </Layout>
+              } />
+              <Route path="/shopping-list" element={
+                <Layout>
+                  <SmartShoppingListPage />
+                </Layout>
+              } />
+              <Route path="/features" element={
+                <Layout>
+                  <FeaturesHub />
                 </Layout>
               } />
             </>

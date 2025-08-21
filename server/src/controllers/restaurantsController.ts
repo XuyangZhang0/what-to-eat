@@ -3,6 +3,7 @@ import { RestaurantModel } from '@/models/Restaurant.js';
 import { RandomSelectionService } from '@/services/randomSelectionService.js';
 import { asyncHandler } from '@/middleware/errorHandler.js';
 import { SearchFilters, PaginationOptions } from '@/models/types.js';
+import { db } from '@/database/connection.js';
 
 export class RestaurantsController {
   // Get all restaurants for user with filtering and pagination
@@ -50,6 +51,83 @@ export class RestaurantsController {
     res.json({
       success: true,
       data: restaurants,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        total_pages: totalPages
+      }
+    });
+  });
+
+  // Discover public restaurants from all users
+  static discoverRestaurants = asyncHandler(async (req: Request, res: Response) => {
+    const {
+      search,
+      cuisine_type,
+      price_range,
+      rating_min,
+      tag_ids,
+      page = 1,
+      limit = 20,
+      sort_by = 'created_at',
+      sort_order = 'desc'
+    } = req.query;
+
+    const filters: SearchFilters = {};
+    if (search) filters.search = search as string;
+    if (cuisine_type) filters.cuisine_type = cuisine_type as string;
+    if (price_range) filters.price_range = price_range as any;
+    if (rating_min) filters.rating_min = Number(rating_min);
+    if (tag_ids && Array.isArray(tag_ids)) filters.tag_ids = tag_ids as unknown as number[];
+
+    const pagination: PaginationOptions = {
+      page: Number(page),
+      limit: Number(limit),
+      sort_by: sort_by as string,
+      sort_order: sort_order as 'asc' | 'desc'
+    };
+
+    const { restaurants, total } = RestaurantModel.findAllPublic(filters, pagination);
+    
+    // If user is authenticated, check their favorite status for each restaurant
+    let restaurantsWithFavoriteStatus = restaurants;
+    if (req.user) {
+      const userId = req.user.user_id;
+      
+      // Get user's favorites for the current set of restaurants from user_favorites table (cross-user favorites)
+      const restaurantIds = restaurants.map(restaurant => restaurant.id);
+      let favoriteRestaurantIds: number[] = [];
+      
+      if (restaurantIds.length > 0) {
+        const placeholders = restaurantIds.map(() => '?').join(',');
+        const favoritesStmt = db.prepare(`
+          SELECT item_id 
+          FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'restaurant' AND item_id IN (${placeholders})
+        `);
+        favoriteRestaurantIds = favoritesStmt.all(userId, ...restaurantIds).map((row: any) => row.item_id);
+      }
+      
+      // Add isFavorite property to each restaurant
+      // For own restaurants: use is_favorite field, for other user's restaurants: use user_favorites table
+      restaurantsWithFavoriteStatus = restaurants.map(restaurant => ({
+        ...restaurant,
+        isFavorite: restaurant.user_id === userId ? (restaurant.is_favorite === 1 || restaurant.is_favorite === true) : favoriteRestaurantIds.includes(restaurant.id)
+      }));
+    } else {
+      // For unauthenticated users, set all favorites to false
+      restaurantsWithFavoriteStatus = restaurants.map(restaurant => ({
+        ...restaurant,
+        isFavorite: false
+      }));
+    }
+
+    const totalPages = Math.ceil(total / Number(limit));
+
+    res.json({
+      success: true,
+      data: restaurantsWithFavoriteStatus,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -399,6 +477,55 @@ export class RestaurantsController {
       success: true,
       data: updatedRestaurant,
       message: `Restaurant ${updatedRestaurant?.is_favorite ? 'added to' : 'removed from'} favorites`
+    });
+  });
+
+  // Get restaurant name suggestions for autocomplete
+  static getRestaurantSuggestions = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated'
+      });
+    }
+
+    const userId = req.user.user_id;
+    const { q: query } = req.query;
+    const limit = Number(req.query.limit) || 10;
+
+    if (!query || typeof query !== 'string' || query.trim().length < 1) {
+      return res.json({
+        success: true,
+        data: []
+      });
+    }
+
+    // Search for restaurants by name (partial match)
+    const filters: SearchFilters = { 
+      search: query.trim()
+    };
+
+    const { restaurants } = RestaurantModel.findByUserId(userId, filters, { 
+      limit,
+      sort_by: 'name',
+      sort_order: 'asc'
+    });
+
+    // Return simplified data for autocomplete suggestions
+    const suggestions = restaurants.map(restaurant => ({
+      id: restaurant.id,
+      name: restaurant.name,
+      cuisine_type: restaurant.cuisine_type,
+      address: restaurant.address,
+      phone: restaurant.phone,
+      price_range: restaurant.price_range,
+      rating: restaurant.rating,
+      opening_hours: restaurant.opening_hours
+    }));
+
+    res.json({
+      success: true,
+      data: suggestions
     });
   });
 }

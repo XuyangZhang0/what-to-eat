@@ -1,42 +1,122 @@
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Clock, Star } from 'lucide-react'
+import { randomApi, mealsApi, restaurantsApi } from '@/services/api'
+import type { Meal, Restaurant } from '@/types'
 
-// Mock data - replace with actual data from API/storage
-const recentSuggestions = [
-  {
-    id: '1',
-    name: 'Chicken Teriyaki',
-    type: 'meal',
-    image: '/images/chicken-teriyaki.jpg',
-    category: 'dinner',
-    cookingTime: 25,
-    rating: 4.5,
-  },
-  {
-    id: '2',
-    name: 'Pizza Palace',
-    type: 'restaurant',
-    image: '/images/pizza-palace.jpg',
-    cuisine: 'Italian',
-    rating: 4.2,
-  },
-  {
-    id: '3',
-    name: 'Avocado Toast',
-    type: 'meal',
-    image: '/images/avocado-toast.jpg',
-    category: 'breakfast',
-    cookingTime: 10,
-    rating: 4.7,
-  },
-]
+interface RecentSuggestion {
+  id: string
+  name: string
+  type: 'meal' | 'restaurant'
+  image?: string
+  category?: string
+  cuisine?: string
+  cookingTime?: number
+  rating?: number
+}
 
 export default function RecentSuggestions() {
   const navigate = useNavigate()
+  const [recentSuggestions, setRecentSuggestions] = useState<RecentSuggestion[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  if (recentSuggestions.length === 0) {
-    return null
+  useEffect(() => {
+    loadRecentSuggestions()
+  }, [])
+
+  const loadRecentSuggestions = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      // Get recent selection history
+      const historyResponse = await randomApi.getSelectionHistory({ page: 1, limit: 10 })
+      const history = historyResponse.data
+      
+      if (history.length === 0) {
+        setRecentSuggestions([])
+        return
+      }
+      
+      // Fetch full details for each item
+      const suggestions: RecentSuggestion[] = []
+      
+      for (const selection of history.slice(0, 5)) { // Limit to 5 recent items
+        try {
+          if (selection.item_type === 'meal') {
+            const meal = await mealsApi.getMealById(selection.item_id)
+            suggestions.push({
+              id: meal.id.toString(),
+              name: meal.name,
+              type: 'meal',
+              category: meal.difficulty_level || 'meal',
+              cookingTime: meal.prep_time,
+              rating: 4.5 // Default rating for meals
+            })
+          } else {
+            const restaurant = await restaurantsApi.getRestaurantById(selection.item_id)
+            suggestions.push({
+              id: restaurant.id.toString(),
+              name: restaurant.name,
+              type: 'restaurant',
+              cuisine: restaurant.cuisine_type,
+              rating: restaurant.rating || 4.0
+            })
+          }
+        } catch (itemError) {
+          console.warn(`Failed to fetch details for ${selection.item_type} ${selection.item_id}:`, itemError)
+          // Skip this item if we can't fetch its details
+        }
+      }
+      
+      setRecentSuggestions(suggestions)
+    } catch (err) {
+      console.error('Failed to load recent suggestions:', err)
+      setError('Failed to load recent suggestions')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <motion.div
+        className="px-6 py-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Recent Suggestions</h2>
+        </div>
+        <div className="animate-pulse space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-muted rounded-lg"></div>
+          ))}
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (error || recentSuggestions.length === 0) {
+    return (
+      <motion.div
+        className="px-6 py-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Recent Suggestions</h2>
+        </div>
+        <div className="text-center py-6 text-muted-foreground">
+          <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">
+            {error ? error : "No recent suggestions. Try using the random selection feature!"}
+          </p>
+        </div>
+      </motion.div>
+    )
   }
 
   const handleSuggestionClick = (suggestion: typeof recentSuggestions[0]) => {

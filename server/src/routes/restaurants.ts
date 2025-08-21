@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { RestaurantsController } from '@/controllers/restaurantsController.js';
-import { requireAuth } from '@/middleware/auth.js';
+import { requireAuth, optionalAuth } from '@/middleware/auth.js';
 import { 
   validateBody, 
   validateQuery, 
@@ -18,6 +18,16 @@ import {
 } from '@/validation/schemas.js';
 
 const router = Router();
+
+// Discovery endpoint for cross-user restaurant browsing (auth optional)
+router.get('/discover', 
+  optionalAuth,
+  parseTagIds,
+  parsePagination,
+  sanitizeSearch,
+  validateQuery(searchQuerySchema), 
+  RestaurantsController.discoverRestaurants
+);
 
 // All routes require authentication
 router.use(requireAuth);
@@ -40,6 +50,11 @@ router.get('/random', RestaurantsController.getRandomRestaurant);
 router.get('/search', 
   validateQuery(searchQuerySchema), 
   RestaurantsController.searchRestaurants
+);
+
+// GET /api/restaurants/suggestions - Get restaurant name suggestions for autocomplete
+router.get('/suggestions', 
+  RestaurantsController.getRestaurantSuggestions
 );
 
 // GET /api/restaurants/cuisine-types - Get cuisine types

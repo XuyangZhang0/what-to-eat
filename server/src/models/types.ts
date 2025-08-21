@@ -1,5 +1,23 @@
 // Database model types
 
+// Opening hours for a day
+export interface DayOpeningHours {
+  open: string; // Time in HH:MM format (24-hour)
+  close: string; // Time in HH:MM format (24-hour)
+  is_closed: boolean; // Whether the restaurant is closed this day
+}
+
+// Weekly opening hours
+export interface WeeklyOpeningHours {
+  monday: DayOpeningHours;
+  tuesday: DayOpeningHours;
+  wednesday: DayOpeningHours;
+  thursday: DayOpeningHours;
+  friday: DayOpeningHours;
+  saturday: DayOpeningHours;
+  sunday: DayOpeningHours;
+}
+
 export interface User {
   id: number;
   username: string;
@@ -32,6 +50,8 @@ export interface Meal {
   cuisine_type?: string;
   difficulty_level?: 'easy' | 'medium' | 'hard';
   prep_time?: number;
+  ingredients?: string[];
+  instructions?: string[];
   is_favorite: boolean;
   created_at: string;
   updated_at: string;
@@ -45,6 +65,8 @@ export interface CreateMealData {
   cuisine_type?: string;
   difficulty_level?: 'easy' | 'medium' | 'hard';
   prep_time?: number;
+  ingredients?: string[];
+  instructions?: string[];
   is_favorite?: boolean;
   tag_ids?: number[];
 }
@@ -55,6 +77,8 @@ export interface UpdateMealData {
   cuisine_type?: string;
   difficulty_level?: 'easy' | 'medium' | 'hard';
   prep_time?: number;
+  ingredients?: string[];
+  instructions?: string[];
   is_favorite?: boolean;
   tag_ids?: number[];
 }
@@ -69,6 +93,7 @@ export interface Restaurant {
   price_range?: '$' | '$$' | '$$$' | '$$$$';
   is_favorite: boolean;
   rating?: number;
+  opening_hours?: WeeklyOpeningHours;
   created_at: string;
   updated_at: string;
   tags?: Tag[];
@@ -83,6 +108,7 @@ export interface CreateRestaurantData {
   price_range?: '$' | '$$' | '$$$' | '$$$$';
   is_favorite?: boolean;
   rating?: number;
+  opening_hours?: WeeklyOpeningHours;
   tag_ids?: number[];
 }
 
@@ -94,6 +120,7 @@ export interface UpdateRestaurantData {
   price_range?: '$' | '$$' | '$$$' | '$$$$';
   is_favorite?: boolean;
   rating?: number;
+  opening_hours?: WeeklyOpeningHours;
   tag_ids?: number[];
 }
 

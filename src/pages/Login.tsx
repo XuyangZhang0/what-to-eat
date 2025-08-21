@@ -1,13 +1,19 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { LoginForm } from '@/components/LoginForm'
+import { RegisterForm } from '@/components/RegisterForm'
 
 export default function Login() {
   const navigate = useNavigate()
+  const [isLogin, setIsLogin] = useState(true)
 
-  const handleLoginSuccess = () => {
+  const handleAuthSuccess = () => {
     navigate('/')
+  }
+
+  const handleSwitchMode = () => {
+    setIsLogin(!isLogin)
   }
 
   return (
@@ -26,7 +32,11 @@ export default function Login() {
           </p>
         </motion.div>
 
-        <LoginForm onSuccess={handleLoginSuccess} />
+        {isLogin ? (
+          <LoginForm onSuccess={handleAuthSuccess} onSwitchToRegister={handleSwitchMode} />
+        ) : (
+          <RegisterForm onSuccess={handleAuthSuccess} onSwitchToLogin={handleSwitchMode} />
+        )}
       </div>
     </div>
   )

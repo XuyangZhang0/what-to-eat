@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS meals (
   cuisine_type TEXT,
   difficulty_level TEXT CHECK(difficulty_level IN ('easy', 'medium', 'hard')),
   prep_time INTEGER, -- in minutes
+  ingredients TEXT, -- JSON array of ingredients
+  instructions TEXT, -- JSON array of cooking instructions
   is_favorite BOOLEAN DEFAULT FALSE,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -37,6 +39,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   price_range TEXT CHECK(price_range IN ('$', '$$', '$$$', '$$$$')),
   is_favorite BOOLEAN DEFAULT FALSE,
   rating REAL CHECK(rating >= 0 AND rating <= 5),
+  opening_hours TEXT DEFAULT '{}', -- JSON string for weekly opening hours
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -78,6 +81,17 @@ CREATE TABLE IF NOT EXISTS selection_history (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- User favorites table for cross-user favoriting
+CREATE TABLE IF NOT EXISTS user_favorites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  item_type TEXT NOT NULL CHECK(item_type IN ('meal', 'restaurant')),
+  item_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, item_type, item_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_meals_user_id ON meals(user_id);
 CREATE INDEX IF NOT EXISTS idx_restaurants_user_id ON restaurants(user_id);
@@ -87,6 +101,9 @@ CREATE INDEX IF NOT EXISTS idx_meals_cuisine_type ON meals(cuisine_type);
 CREATE INDEX IF NOT EXISTS idx_restaurants_cuisine_type ON restaurants(cuisine_type);
 CREATE INDEX IF NOT EXISTS idx_meals_is_favorite ON meals(is_favorite);
 CREATE INDEX IF NOT EXISTS idx_restaurants_is_favorite ON restaurants(is_favorite);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_user_id ON user_favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_item_type ON user_favorites(item_type);
+CREATE INDEX IF NOT EXISTS idx_user_favorites_composite ON user_favorites(user_id, item_type, item_id);
 
 -- Triggers to update updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_users_updated_at

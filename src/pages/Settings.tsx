@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import { 
   Moon, 
   Sun, 
@@ -11,16 +12,53 @@ import {
   Info,
   ChevronRight,
   Vibrate,
-  ArrowLeft
+  ArrowLeft,
+  Shuffle,
+  Sparkles
 } from 'lucide-react'
 import { useTheme } from '@/hooks/useTheme'
 import { useShakeSettings } from '@/hooks/useShakeSettings'
 import ShakeSettings from '@/components/ShakeSettings'
+import { authApi } from '@/services/api'
 
 export default function Settings() {
+  const navigate = useNavigate()
   const { theme, setTheme } = useTheme()
   const { settings: shakeSettings, updateSettings: updateShakeSettings } = useShakeSettings()
   const [showShakeSettings, setShowShakeSettings] = useState(false)
+  const [mealSuggestionCount, setMealSuggestionCount] = useState(() => {
+    const saved = localStorage.getItem('meal_suggestion_count')
+    return saved ? parseInt(saved) : 1
+  })
+  
+  const [animationStyle, setAnimationStyle] = useState(() => {
+    const saved = localStorage.getItem('animation_style')
+    return saved || 'slot-machine'
+  })
+
+  // Load user preferences from backend on component mount
+  useEffect(() => {
+    const loadUserPreferences = async () => {
+      try {
+        const profile = await authApi.getProfile()
+        const preferences = JSON.parse(profile.preferences || '{}')
+        
+        if (preferences.meal_suggestion_count) {
+          setMealSuggestionCount(preferences.meal_suggestion_count)
+          localStorage.setItem('meal_suggestion_count', preferences.meal_suggestion_count.toString())
+        }
+        
+        if (preferences.animation_style) {
+          setAnimationStyle(preferences.animation_style)
+          localStorage.setItem('animation_style', preferences.animation_style)
+        }
+      } catch (error) {
+        console.error('Failed to load user preferences:', error)
+      }
+    }
+
+    loadUserPreferences()
+  }, [])
 
   const settingsSections = [
     {
@@ -50,6 +88,27 @@ export default function Settings() {
       ],
     },
     {
+      title: 'Random Selection',
+      items: [
+        {
+          id: 'meal-suggestion-count',
+          icon: Shuffle,
+          label: 'Meal Suggestions',
+          description: 'How many meal suggestions to show (restaurants always show 1)',
+          value: `${mealSuggestionCount} meal ${mealSuggestionCount === 1 ? 'suggestion' : 'suggestions'}`,
+          action: 'select',
+        },
+        {
+          id: 'animation-style',
+          icon: Vibrate,
+          label: 'Animation Style',
+          description: 'Choose between slot machine or powerball picker animations',
+          value: animationStyle === 'slot-machine' ? 'Slot Machine 🎰' : 'Powerball Picker 🎱',
+          action: 'select',
+        },
+      ],
+    },
+    {
       title: 'Notifications',
       items: [
         {
@@ -72,6 +131,18 @@ export default function Settings() {
           description: 'Find nearby restaurants',
           value: false,
           action: 'toggle',
+        },
+      ],
+    },
+    {
+      title: 'Innovative Features',
+      items: [
+        {
+          id: 'features',
+          icon: Sparkles,
+          label: 'Explore Features',
+          description: 'Discover all the innovative features available',
+          action: 'navigate',
         },
       ],
     },
@@ -108,9 +179,45 @@ export default function Settings() {
     console.log(`Toggle ${id}:`, !currentValue)
   }
 
+  const handleMealSuggestionCountChange = async () => {
+    const newCount = mealSuggestionCount >= 3 ? 1 : mealSuggestionCount + 1
+    setMealSuggestionCount(newCount)
+    localStorage.setItem('meal_suggestion_count', newCount.toString())
+    
+    // Update user preferences in the backend
+    try {
+      await authApi.updateProfile({
+        preferences: {
+          meal_suggestion_count: newCount
+        }
+      })
+    } catch (error) {
+      console.error('Error updating meal suggestion count:', error)
+    }
+  }
+
+  const handleAnimationStyleChange = async () => {
+    const newStyle = animationStyle === 'slot-machine' ? 'powerball' : 'slot-machine'
+    setAnimationStyle(newStyle)
+    localStorage.setItem('animation_style', newStyle)
+    
+    // Update user preferences in the backend
+    try {
+      await authApi.updateProfile({
+        preferences: {
+          animation_style: newStyle
+        }
+      })
+    } catch (error) {
+      console.error('Error updating animation style:', error)
+    }
+  }
+
   const handleNavigate = (id: string) => {
     if (id === 'shake-settings') {
       setShowShakeSettings(true)
+    } else if (id === 'features') {
+      navigate('/features')
     } else {
       // TODO: Implement navigation to privacy policy, about page, etc.
       console.log(`Navigate to ${id}`)
@@ -164,6 +271,10 @@ export default function Settings() {
                       onClick={() => {
                         if (item.action === 'select' && item.id === 'theme') {
                           handleThemeChange()
+                        } else if (item.action === 'select' && item.id === 'meal-suggestion-count') {
+                          handleMealSuggestionCountChange()
+                        } else if (item.action === 'select' && item.id === 'animation-style') {
+                          handleAnimationStyleChange()
                         } else if (item.action === 'toggle') {
                           handleToggle(item.id, item.value as boolean)
                         } else if (item.action === 'navigate') {

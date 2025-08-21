@@ -152,30 +152,8 @@ async function seedDatabase() {
       demoUser = UserModel.findByEmail('demo@example.com')!;
     }
     
-    // Import detailed meal and restaurant data
-    const { DETAILED_MEAL_DATA, DETAILED_RESTAURANT_DATA } = await import('./seedData.js');
-    
-    // Create comprehensive sample meals
-    console.log('Creating sample meals...');
-    const sampleMeals = DETAILED_MEAL_DATA;
-    
-    for (const meal of sampleMeals) {
-      try {
-        const tagIds = meal.tags
-          .map(tagName => createdTags[tagName])
-          .filter(id => id !== undefined);
-        
-        const { tags, ...mealData } = meal;
-        MealModel.create({
-          ...mealData,
-          user_id: demoUser.id,
-          tag_ids: tagIds
-        });
-        console.log(`  ✓ Created meal: ${meal.name}`);
-      } catch (error) {
-        console.log(`  ⚠️  Skipped meal: ${meal.name} (may already exist)`);
-      }
-    }
+    // Note: Real meals are seeded via seedRealMeals.js script
+    console.log('Skipping sample meals - using real meal data from seedRealMeals.js instead');
     
     // Create comprehensive sample restaurants
     console.log('Creating sample restaurants...');
@@ -187,7 +165,7 @@ async function seedDatabase() {
         address: '123 Little Italy St, Downtown',
         phone: '555-0123',
         price_range: '$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.5,
         tags: ['Italian', 'Casual', 'Takeout', 'Family Friendly', 'Local']
       },
@@ -197,7 +175,7 @@ async function seedDatabase() {
         address: '456 Vineyard Ave, Uptown',
         phone: '555-0456',
         price_range: '$$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.7,
         tags: ['Italian', 'Fine Dining', 'Date Night', 'Local']
       },
@@ -219,7 +197,7 @@ async function seedDatabase() {
         address: '321 Bamboo Lane',
         phone: '555-0321',
         price_range: '$$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.8,
         tags: ['Japanese', 'Asian', 'Fine Dining', 'Date Night', 'Local']
       },
@@ -239,7 +217,7 @@ async function seedDatabase() {
         address: '987 K-Town Plaza',
         phone: '555-0987',
         price_range: '$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.4,
         tags: ['Korean', 'Asian', 'BBQ', 'Casual', 'Local']
       },
@@ -261,7 +239,7 @@ async function seedDatabase() {
         address: '258 Fiesta Avenue',
         phone: '555-0258',
         price_range: '$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.2,
         tags: ['Mexican', 'Spicy', 'Casual', 'Family Friendly', 'Local']
       },
@@ -283,7 +261,7 @@ async function seedDatabase() {
         address: '741 Main Street',
         phone: '555-0741',
         price_range: '$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.0,
         tags: ['American', 'Casual', 'Family Friendly', 'Local', 'Comfort Food']
       },
@@ -337,7 +315,7 @@ async function seedDatabase() {
         address: '486 Curry Lane',
         phone: '555-0486',
         price_range: '$$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.4,
         tags: ['Indian', 'Spicy', 'Vegetarian', 'Casual', 'Local']
       },
@@ -385,7 +363,7 @@ async function seedDatabase() {
         address: '357 Bean Street',
         phone: '555-0357',
         price_range: '$' as const,
-        is_favorite: true,
+        is_favorite: false,
         rating: 4.5,
         tags: ['American', 'Breakfast', 'Casual', 'Local', 'Quick']
       }
@@ -467,7 +445,7 @@ async function seedDatabase() {
     console.log('\n✅ Comprehensive database seeding completed successfully!');
     console.log('\n📋 Summary:');
     console.log(`  • Tags: ${Object.keys(createdTags).length} created`);
-    console.log(`  • Meals: ${sampleMeals.length} diverse recipes`);
+    console.log(`  • Meals: Use seedRealMeals.js for real meal data`);
     console.log(`  • Restaurants: ${sampleRestaurants.length} establishments`);
     console.log(`  • Demo user: demo@example.com / demo123!A`);
     console.log(`  • Selection history: Sample data for algorithm testing`);

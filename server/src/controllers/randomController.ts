@@ -266,6 +266,35 @@ export class RandomController {
     });
   });
 
+  // Get multiple random suggestions based on user preferences
+  static getMultipleSuggestions = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'User not authenticated'
+      });
+    }
+
+    const userId = req.user.user_id;
+    const {
+      exclude_recent_days = 7,
+      weight_favorites = true,
+      filters = {}
+    } = req.body;
+
+    const suggestions = await RandomSelectionService.getMultipleRandomSuggestions(userId, {
+      exclude_recent_days,
+      weight_favorites,
+      filters
+    });
+
+    res.json({
+      success: true,
+      data: suggestions,
+      count: suggestions.length
+    });
+  });
+
   // Get quick suggestions for different scenarios
   static getQuickSuggestions = asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {

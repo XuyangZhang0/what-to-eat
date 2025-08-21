@@ -7,7 +7,7 @@ import { useAutoSave } from '@/hooks/useAutoSave'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
 import { CreateMealData, UpdateMealData, Tag } from '@/types/api'
-import { Meal, MealCategory } from '@/types'
+import { Meal } from '@/types'
 import { mealsApi, tagsApi } from '@/services/api'
 import { EnhancedInput } from '@/components/ui/EnhancedInput'
 import { EnhancedButton } from '@/components/ui/EnhancedButton'
@@ -21,14 +21,6 @@ interface MealFormProps {
   autoSave?: boolean;
 }
 
-const MEAL_CATEGORIES: { value: MealCategory; label: string }[] = [
-  { value: 'breakfast', label: 'Breakfast' },
-  { value: 'lunch', label: 'Lunch' },
-  { value: 'dinner', label: 'Dinner' },
-  { value: 'snack', label: 'Snack' },
-  { value: 'dessert', label: 'Dessert' },
-  { value: 'drink', label: 'Drink' },
-]
 
 const DIFFICULTY_LEVELS = [
   { value: 'easy', label: 'Easy', icon: '🟢' },
@@ -39,7 +31,6 @@ const DIFFICULTY_LEVELS = [
 const validationSchema = {
   name: { required: true, minLength: 1, maxLength: 100 },
   description: { maxLength: 500 },
-  category: { required: true },
   cuisine: { maxLength: 50 },
   cookingTime: {
     custom: (value: number) => {
@@ -72,11 +63,10 @@ export default function MealForm({
   const initialData = {
     name: meal?.name || '',
     description: meal?.description || '',
-    category: meal?.category || 'lunch' as MealCategory,
     cuisine: meal?.cuisine || '',
     difficulty: meal?.difficulty || 'easy' as const,
     cookingTime: meal?.cookingTime || undefined,
-    isFavorite: meal?.isFavorite || false,
+    isFavorite: meal?.isFavorite ?? true,
   }
 
   const {
@@ -374,24 +364,6 @@ export default function MealForm({
               debounceMs={300}
               onDebouncedChange={(value) => updateField('name', value)}
             />
-          </div>
-
-          {/* Category */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Category *
-            </label>
-            <select
-              value={data.category}
-              onChange={(e) => updateField('category', e.target.value as MealCategory)}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            >
-              {MEAL_CATEGORIES.map(category => (
-                <option key={category.value} value={category.value}>
-                  {category.label}
-                </option>
-              ))}
-            </select>
           </div>
 
           {/* Cuisine */}

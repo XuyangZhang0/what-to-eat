@@ -15,7 +15,7 @@ import {
   Upload
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { Meal, MealCategory, SearchFilter } from '@/types'
+import { Meal, SearchFilter } from '@/types'
 import { mealsApi, tagsApi } from '@/services/api'
 import { Tag } from '@/types/api'
 import SearchInput from '@/components/SearchInput'
@@ -30,7 +30,6 @@ interface MealListProps {
 }
 
 interface FilterState {
-  category?: MealCategory;
   cuisine?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
   maxCookingTime?: number;
@@ -62,14 +61,6 @@ export default function MealList({
   const [deletingMeal, setDeletingMeal] = useState<Meal | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  const MEAL_CATEGORIES: { value: MealCategory; label: string }[] = [
-    { value: 'breakfast', label: 'Breakfast' },
-    { value: 'lunch', label: 'Lunch' },
-    { value: 'dinner', label: 'Dinner' },
-    { value: 'snack', label: 'Snack' },
-    { value: 'dessert', label: 'Dessert' },
-    { value: 'drink', label: 'Drink' },
-  ]
 
   const DIFFICULTY_LEVELS = [
     { value: 'easy', label: 'Easy', color: 'text-green-600 dark:text-green-400' },
@@ -117,9 +108,6 @@ export default function MealList({
     }
 
     // Apply filters
-    if (filters.category) {
-      filtered = filtered.filter(meal => meal.category === filters.category)
-    }
     if (filters.cuisine) {
       filtered = filtered.filter(meal => meal.cuisine === filters.cuisine)
     }
@@ -303,24 +291,7 @@ export default function MealList({
             exit={{ opacity: 0, height: 0 }}
             className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-4"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Category Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Category
-                </label>
-                <select
-                  value={filters.category || ''}
-                  onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value as MealCategory || undefined }))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
-                >
-                  <option value="">All Categories</option>
-                  {MEAL_CATEGORIES.map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-              </div>
-
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Cuisine Filter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -485,9 +456,6 @@ export default function MealList({
                     </div>
                     
                     <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                      <span className="capitalize bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md text-xs">
-                        {meal.category}
-                      </span>
                       {meal.difficulty && (
                         <span className={cn('flex items-center gap-1', getDifficultyColor(meal.difficulty))}>
                           <ChefHat className="w-3 h-3" />
