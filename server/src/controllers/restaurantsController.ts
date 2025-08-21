@@ -113,7 +113,7 @@ export class RestaurantsController {
       // For own restaurants: use is_favorite field, for other user's restaurants: use user_favorites table
       restaurantsWithFavoriteStatus = restaurants.map(restaurant => ({
         ...restaurant,
-        isFavorite: restaurant.user_id === userId ? (restaurant.is_favorite === 1 || restaurant.is_favorite === true) : favoriteRestaurantIds.includes(restaurant.id)
+        isFavorite: restaurant.user_id === userId ? (restaurant.is_favorite === 1) : favoriteRestaurantIds.includes(restaurant.id)
       }));
     } else {
       // For unauthenticated users, set all favorites to false
@@ -167,6 +167,48 @@ export class RestaurantsController {
     res.json({
       success: true,
       data: restaurant
+    });
+  });
+
+  // Public restaurant viewing endpoint - allows viewing any restaurant with optional authentication
+  static viewRestaurant = asyncHandler(async (req: Request, res: Response) => {
+    const restaurantId = Number(req.params.id);
+    const restaurant = RestaurantModel.findById(restaurantId);
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        error: 'Restaurant not found'
+      });
+    }
+
+    // Add favorite status based on authentication
+    let restaurantWithFavoriteStatus = { ...restaurant };
+
+    if (req.user) {
+      // User is authenticated, check favorite status
+      const userId = req.user.user_id;
+      
+      if (restaurant.user_id === userId) {
+        // User's own restaurant, use the restaurant's is_favorite field
+        (restaurantWithFavoriteStatus as any).isFavorite = restaurant.is_favorite === 1;
+      } else {
+        // Other user's restaurant, check user_favorites table
+        const favoriteStmt = db.prepare(`
+          SELECT 1 FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'restaurant' AND item_id = ?
+        `);
+        const isFavorite = favoriteStmt.get(userId, restaurantId);
+        (restaurantWithFavoriteStatus as any).isFavorite = !!isFavorite;
+      }
+    } else {
+      // Not authenticated, set favorite as false
+      (restaurantWithFavoriteStatus as any).isFavorite = false;
+    }
+
+    res.json({
+      success: true,
+      data: restaurantWithFavoriteStatus
     });
   });
 

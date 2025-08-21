@@ -190,6 +190,11 @@ export const restaurantsApi = {
     return fetchApi<Restaurant>(`/restaurants/${id}`)
   },
 
+  // View any restaurant by ID (public access with optional authentication)
+  async viewRestaurant(id: string): Promise<Restaurant> {
+    return fetchApi<Restaurant>(`/restaurants/view/${id}`)
+  },
+
   // Search restaurants by query
   async searchRestaurants(
     query: string, 

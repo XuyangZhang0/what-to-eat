@@ -29,7 +29,15 @@ router.get('/discover',
   RestaurantsController.discoverRestaurants
 );
 
-// All routes require authentication
+// Public restaurant viewing endpoint - allows viewing any restaurant with optional authentication
+router.get('/view/:id', 
+  optionalAuth,
+  parseIdParam,
+  validateParams(idParamSchema),
+  RestaurantsController.viewRestaurant
+);
+
+// All other routes require authentication
 router.use(requireAuth);
 
 // Middleware for parsing query parameters
