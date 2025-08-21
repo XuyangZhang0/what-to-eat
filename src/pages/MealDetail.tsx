@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
@@ -9,69 +9,122 @@ import {
   Share, 
   BookOpen,
   ShoppingCart,
-  Play
+  Play,
+  AlertCircle,
+  ArrowLeft
 } from 'lucide-react'
 import { Meal } from '@/types'
+import { useMeal } from '@/hooks/useMeal'
+import { mealsApi } from '@/services/api'
 
-// Mock meal data - replace with actual API call
-const mockMeal: Meal = {
-  id: '1',
-  name: 'Chicken Teriyaki Bowl',
-  description: 'Tender chicken glazed with homemade teriyaki sauce over steamed rice with fresh vegetables',
-  category: 'dinner',
-  cuisine: 'Japanese',
-  difficulty: 'easy',
-  cookingTime: 25,
-  tags: ['healthy', 'gluten-free', 'protein-rich'],
-  image: '/images/chicken-teriyaki.jpg',
-  isFavorite: false,
-  ingredients: [
-    '2 chicken breasts, sliced',
-    '2 cups jasmine rice',
-    '1/4 cup soy sauce',
-    '2 tbsp mirin',
-    '2 tbsp honey',
-    '1 tbsp sesame oil',
-    '2 cloves garlic, minced',
-    '1 tsp ginger, grated',
-    '1 broccoli crown',
-    '1 carrot, julienned',
-    'Green onions for garnish',
-    'Sesame seeds'
-  ],
-  instructions: [
-    'Cook jasmine rice according to package instructions',
-    'In a bowl, mix soy sauce, mirin, honey, sesame oil, garlic, and ginger to make teriyaki sauce',
-    'Heat a large pan over medium-high heat and cook chicken until golden brown',
-    'Add teriyaki sauce to the chicken and simmer until glazed',
-    'Steam broccoli and carrots until tender-crisp',
-    'Serve chicken over rice with vegetables',
-    'Garnish with green onions and sesame seeds'
-  ]
-}
 
 export default function MealDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [isFavorite, setIsFavorite] = useState(mockMeal.isFavorite)
+  const { meal, loading, error, refetch } = useMeal(id)
+  const [isFavorite, setIsFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState<'ingredients' | 'instructions'>('ingredients')
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
 
-  const handleFavoriteToggle = () => {
-    setIsFavorite(!isFavorite)
-    // TODO: Update favorite status in backend/storage
+  // Update favorite status when meal data is loaded
+  useEffect(() => {
+    if (meal) {
+      setIsFavorite(meal.isFavorite || false)
+    }
+  }, [meal])
+
+  const handleFavoriteToggle = async () => {
+    if (!meal || isTogglingFavorite) return
+    
+    setIsTogglingFavorite(true)
+    try {
+      const result = await mealsApi.toggleFavorite(meal.id)
+      setIsFavorite(result.isFavorite)
+      
+      // Dispatch custom event to notify other components of favorite update
+      window.dispatchEvent(new CustomEvent('favoritesUpdated', {
+        detail: {
+          itemId: meal.id,
+          itemType: 'meal',
+          itemName: meal.name,
+          isFavorite: result.isFavorite
+        }
+      }))
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error)
+      // Revert the UI state on error
+    } finally {
+      setIsTogglingFavorite(false)
+    }
   }
 
   const handleShare = () => {
+    if (!meal) return
+    
     if (navigator.share) {
       navigator.share({
-        title: mockMeal.name,
-        text: mockMeal.description,
+        title: meal.name,
+        text: meal.description,
         url: window.location.href,
       })
     } else {
       // Fallback: copy to clipboard
       navigator.clipboard.writeText(window.location.href)
     }
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading meal details...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error || !meal) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div className="p-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center space-x-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back</span>
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-6">
+            <AlertCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Unable to Load Meal</h2>
+            <p className="text-muted-foreground mb-4">
+              {error || 'The meal you requested could not be found.'}
+            </p>
+            <div className="space-x-3">
+              <button
+                onClick={() => refetch()}
+                className="btn btn-primary"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="btn btn-outline"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -86,7 +139,7 @@ export default function MealDetail() {
         {/* Image placeholder */}
         <div className="absolute inset-0 bg-muted flex items-center justify-center">
           <span className="text-6xl font-bold text-muted-foreground opacity-50">
-            {mockMeal.name.charAt(0)}
+            {meal.name.charAt(0)}
           </span>
         </div>
         
@@ -100,9 +153,10 @@ export default function MealDetail() {
           </button>
           <button
             onClick={handleFavoriteToggle}
-            className="w-10 h-10 bg-background/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-background transition-colors"
+            disabled={isTogglingFavorite}
+            className="w-10 h-10 bg-background/80 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-background transition-colors disabled:opacity-50"
           >
-            <Heart className={`w-5 h-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
+            <Heart className={`w-5 h-5 ${isFavorite ? 'fill-red-500 text-red-500' : ''} ${isTogglingFavorite ? 'animate-pulse' : ''}`} />
           </button>
         </div>
       </motion.div>
@@ -116,18 +170,18 @@ export default function MealDetail() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <h1 className="text-2xl font-bold mb-2">{mockMeal.name}</h1>
-          <p className="text-muted-foreground mb-4">{mockMeal.description}</p>
+          <h1 className="text-2xl font-bold mb-2">{meal.name}</h1>
+          <p className="text-muted-foreground mb-4">{meal.description}</p>
           
           {/* Meta info */}
           <div className="flex items-center space-x-4 text-sm">
             <div className="flex items-center space-x-1">
               <Clock className="w-4 h-4 text-primary" />
-              <span>{mockMeal.cookingTime} min</span>
+              <span>{meal.cookingTime || meal.prep_time || 'N/A'} min</span>
             </div>
             <div className="flex items-center space-x-1">
               <ChefHat className="w-4 h-4 text-primary" />
-              <span className="capitalize">{mockMeal.difficulty}</span>
+              <span className="capitalize">{meal.difficulty || meal.difficulty_level || 'N/A'}</span>
             </div>
             <div className="flex items-center space-x-1">
               <Users className="w-4 h-4 text-primary" />
@@ -136,14 +190,14 @@ export default function MealDetail() {
           </div>
 
           {/* Tags */}
-          {mockMeal.tags && mockMeal.tags.length > 0 && (
+          {meal.tags && meal.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-4">
-              {mockMeal.tags.map((tag) => (
+              {meal.tags.map((tag) => (
                 <span
-                  key={tag}
+                  key={typeof tag === 'string' ? tag : tag.name}
                   className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
                 >
-                  {tag}
+                  {typeof tag === 'string' ? tag : tag.name}
                 </span>
               ))}
             </div>
@@ -208,7 +262,7 @@ export default function MealDetail() {
         >
           {activeTab === 'ingredients' ? (
             <div className="space-y-3">
-              {mockMeal.ingredients?.map((ingredient, index) => (
+              {meal.ingredients?.map((ingredient, index) => (
                 <motion.div
                   key={index}
                   className="flex items-center space-x-3 p-3 bg-card rounded-lg border"
@@ -223,7 +277,7 @@ export default function MealDetail() {
             </div>
           ) : (
             <div className="space-y-4">
-              {mockMeal.instructions?.map((instruction, index) => (
+              {meal.instructions?.map((instruction, index) => (
                 <motion.div
                   key={index}
                   className="flex items-start space-x-4 p-4 bg-card rounded-lg border"

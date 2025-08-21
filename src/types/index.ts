@@ -1,16 +1,39 @@
+// Opening hours for a day
+export interface DayOpeningHours {
+  open: string; // Time in HH:MM format (24-hour)
+  close: string; // Time in HH:MM format (24-hour)
+  is_closed: boolean; // Whether the restaurant is closed this day
+}
+
+// Weekly opening hours
+export interface WeeklyOpeningHours {
+  monday: DayOpeningHours;
+  tuesday: DayOpeningHours;
+  wednesday: DayOpeningHours;
+  thursday: DayOpeningHours;
+  friday: DayOpeningHours;
+  saturday: DayOpeningHours;
+  sunday: DayOpeningHours;
+}
+
 export interface Meal {
   id: string;
   name: string;
   description?: string;
-  category: MealCategory;
-  cuisine?: string;
-  difficulty?: 'easy' | 'medium' | 'hard';
-  cookingTime?: number; // in minutes
-  tags?: string[];
+  cuisine?: string; // Legacy support
+  cuisine_type?: string; // Backend format
+  difficulty?: 'easy' | 'medium' | 'hard'; // Legacy support
+  difficulty_level?: 'easy' | 'medium' | 'hard'; // Backend format
+  cookingTime?: number; // Legacy support (in minutes)
+  prep_time?: number; // Backend format (in minutes)
+  tags?: string[] | Array<{ id: number; name: string; color: string }>; // Support both formats
   image?: string;
   ingredients?: string[];
   instructions?: string[];
-  isFavorite?: boolean;
+  isFavorite?: boolean; // Legacy support
+  is_favorite?: boolean; // Backend format
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Restaurant {
@@ -27,10 +50,10 @@ export interface Restaurant {
   isOpen?: boolean;
   distance?: number; // in meters
   isFavorite?: boolean;
+  openingHours?: WeeklyOpeningHours;
 }
 
 export interface UserPreferences {
-  favoriteCategories: MealCategory[];
   favoriteCuisines: string[];
   dietaryRestrictions: string[];
   allergies: string[];
@@ -84,16 +107,7 @@ export interface AppSettings {
   notifications: boolean;
 }
 
-export type MealCategory = 
-  | 'breakfast' 
-  | 'lunch' 
-  | 'dinner' 
-  | 'snack' 
-  | 'dessert' 
-  | 'drink';
-
 export type SearchFilter = {
-  category?: MealCategory;
   cuisine?: string;
   difficulty?: 'easy' | 'medium' | 'hard';
   maxCookingTime?: number;

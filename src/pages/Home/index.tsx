@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Smartphone, Utensils, MapPin, Sparkles, AlertCircle, Settings } from 'lucide-react'
+import { Smartphone, Utensils, AlertCircle, Settings } from 'lucide-react'
 import { useShakeDetection } from '@/hooks/useShakeDetection'
 import { useShakeSettings } from '@/hooks/useShakeSettings'
 import ShakeButton from '@/components/ShakeButton'
 import QuickActions from './QuickActions'
 import RecentSuggestions from './RecentSuggestions'
+import SmartShoppingList from './SmartShoppingList'
 import { getRandomSuggestion } from '@/services/api'
 import { Meal } from '@/types'
 
@@ -53,7 +54,7 @@ export default function Home() {
       const meal = await getRandomSuggestion('meals') as Meal;
       
       // Navigate to the meal detail page
-      navigate(`/meals/${meal.id}?source=random&intensity=${Math.round(currentIntensity)}`);
+      navigate(`/meal/${meal.id}?source=random&intensity=${Math.round(currentIntensity)}`);
     } catch (error) {
       console.error('Failed to get random suggestion:', error)
       // TODO: Show a user-friendly error message
@@ -121,7 +122,7 @@ export default function Home() {
           onShake={handleShakeAction}
           isShaking={isShaking || hasShaken}
           isLoading={isLoading}
-          disabled={!isSupported || permissionState.state === 'denied'}
+          disabled={false}
           intensity={currentIntensity}
           className="mb-8"
         />
@@ -210,39 +211,12 @@ export default function Home() {
       {/* Quick Actions */}
       <QuickActions />
 
+      {/* Smart Shopping List */}
+      <SmartShoppingList />
+
       {/* Recent Suggestions */}
       <RecentSuggestions />
 
-      {/* Features Grid */}
-      <motion.div
-        className="px-6 py-8"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.6 }}
-      >
-        <h2 className="text-xl font-semibold mb-4">Features</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <motion.div
-            className="p-4 bg-card rounded-lg border text-center"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Utensils className="w-8 h-8 text-primary mx-auto mb-2" />
-            <h3 className="font-medium mb-1">Recipes</h3>
-            <p className="text-sm text-muted-foreground">Discover new recipes to cook</p>
-          </motion.div>
-
-          <motion.div
-            className="p-4 bg-card rounded-lg border text-center"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <MapPin className="w-8 h-8 text-primary mx-auto mb-2" />
-            <h3 className="font-medium mb-1">Restaurants</h3>
-            <p className="text-sm text-muted-foreground">Find nearby restaurants</p>
-          </motion.div>
-        </div>
-      </motion.div>
     </div>
   )
 }
