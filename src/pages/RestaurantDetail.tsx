@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
@@ -11,59 +11,164 @@ import {
   Navigation,
   Clock,
   DollarSign,
-  Menu
+  Menu,
+  Loader2,
+  AlertCircle
 } from 'lucide-react'
+import { restaurantsApi, userFavoritesApi } from '@/services/api'
+import { useRestaurant } from '@/hooks/useRestaurant'
+import { useAuth } from '@/hooks/useAuth'
 import { Restaurant } from '@/types'
+import { getFavoriteStatus } from '@/utils/favorites'
+import { formatOpeningHoursForDisplay } from '@/utils/openingHours'
 
-// Mock restaurant data - replace with actual API call
-const mockRestaurant: Restaurant = {
-  id: '1',
-  name: 'Pizza Palace',
-  description: 'Authentic Italian pizza with fresh ingredients sourced directly from Italy. Family-owned restaurant serving the community for over 20 years.',
-  cuisine: 'Italian',
-  address: '123 Main Street, Downtown District, City 12345',
-  phone: '+1 (555) 123-4567',
-  website: 'https://pizzapalace.com',
-  rating: 4.5,
-  priceRange: '$$',
-  image: '/images/pizza-palace.jpg',
-  isOpen: true,
-  distance: 500,
-  isFavorite: false,
+// Parse opening hours if available
+const parseOpeningHours = (openingHours: any) => {
+  if (!openingHours) return null
+  
+  try {
+    if (typeof openingHours === 'string') {
+      return JSON.parse(openingHours)
+    }
+    return openingHours
+  } catch {
+    return null
+  }
 }
 
-const mockHours = {
-  monday: '11:00 AM - 10:00 PM',
-  tuesday: '11:00 AM - 10:00 PM',
-  wednesday: '11:00 AM - 10:00 PM',
-  thursday: '11:00 AM - 10:00 PM',
-  friday: '11:00 AM - 11:00 PM',
-  saturday: '12:00 PM - 11:00 PM',
-  sunday: '12:00 PM - 9:00 PM',
-}
 
-const mockMenuHighlights = [
-  { name: 'Margherita Pizza', price: '$18', description: 'Fresh mozzarella, basil, tomato sauce' },
-  { name: 'Pepperoni Classic', price: '$22', description: 'Traditional pepperoni with mozzarella' },
-  { name: 'Truffle Mushroom', price: '$26', description: 'Wild mushrooms with truffle oil' },
-  { name: 'Caesar Salad', price: '$14', description: 'Crisp romaine, parmesan, croutons' },
+// Default menu highlights for display
+const defaultMenuHighlights = [
+  { name: 'Popular Item 1', price: 'Market Price', description: 'Ask your server for details' },
+  { name: 'Popular Item 2', price: 'Market Price', description: 'Ask your server for details' },
+  { name: 'Popular Item 3', price: 'Market Price', description: 'Ask your server for details' },
 ]
 
 export default function RestaurantDetail() {
   const { id } = useParams()
-  const [isFavorite, setIsFavorite] = useState(mockRestaurant.isFavorite)
+  const { user } = useAuth()
+  const { restaurant, loading, error, refetch } = useRestaurant(id)
+  const [isFavorite, setIsFavorite] = useState(false)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'hours'>('overview')
 
-  const handleFavoriteToggle = () => {
-    setIsFavorite(!isFavorite)
-    // TODO: Update favorite status in backend/storage
+  // Update favorite status when restaurant data changes
+  useEffect(() => {
+    if (restaurant) {
+      // Check both formats for favorite status using utility function
+      const favoriteStatus = getFavoriteStatus(restaurant)
+      setIsFavorite(favoriteStatus)
+      console.log('Restaurant favorite status:', { 
+        name: restaurant.name,
+        isFavorite: restaurant.isFavorite,
+        is_favorite: restaurant.is_favorite,
+        resolved: favoriteStatus
+      })
+    }
+  }, [restaurant])
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading restaurant details...</p>
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error || !restaurant) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8">
+        <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Restaurant Not Found</h2>
+        <p className="text-muted-foreground text-center mb-4">
+          {error || 'The restaurant you\'re looking for could not be found.'}
+        </p>
+        <button 
+          onClick={() => refetch()}
+          className="btn btn-outline btn-md"
+        >
+          Try Again
+        </button>
+      </div>
+    )
+  }
+
+  const openingHours = parseOpeningHours(restaurant.opening_hours)
+  const formattedHours = formatOpeningHoursForDisplay(openingHours)
+
+  const handleFavoriteToggle = async () => {
+    if (!id || isTogglingFavorite || !restaurant) return
+    
+    const currentStatus = isFavorite
+    console.log('Toggling favorite for restaurant:', restaurant.name, 'from:', currentStatus)
+    
+    setIsTogglingFavorite(true)
+    try {
+      let result: { isFavorite?: boolean; is_favorite?: boolean }
+      
+      // Check if this restaurant belongs to the current user
+      const isOwnRestaurant = user && restaurant.user_id && String(restaurant.user_id) === String(user.id)
+      
+      console.log('Restaurant ownership check:', {
+        isOwnRestaurant,
+        currentUserId: user?.id,
+        restaurantUserId: restaurant.user_id,
+        restaurantName: restaurant.name
+      })
+      
+      if (isOwnRestaurant) {
+        // Use the regular restaurant API for own restaurants
+        console.log('Using own restaurant API')
+        result = await restaurantsApi.toggleFavorite(id)
+        setIsFavorite(result.isFavorite || false)
+      } else {
+        // Use the cross-user favorites API for discovered restaurants
+        console.log('Using cross-user favorites API')
+        result = await userFavoritesApi.toggleRestaurantFavorite(id)
+        setIsFavorite(result.is_favorite || false)
+      }
+      
+      console.log('Favorite toggle result:', result)
+      
+      // Dispatch custom event to notify other components of favorite update
+      const newFavoriteStatus = result.isFavorite ?? result.is_favorite ?? false
+      window.dispatchEvent(new CustomEvent('favoritesUpdated', {
+        detail: {
+          itemId: id,
+          itemType: 'restaurant',
+          itemName: restaurant.name,
+          isFavorite: newFavoriteStatus
+        }
+      }))
+      
+      console.log('Successfully toggled favorite to:', newFavoriteStatus)
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error)
+      console.error('Error details:', {
+        restaurantId: id,
+        restaurantName: restaurant.name,
+        userId: user?.id,
+        isOwnRestaurant: user && restaurant.user_id && String(restaurant.user_id) === String(user.id),
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error
+      })
+      // Revert the UI state on error - no need to revert since we only update on success
+    } finally {
+      setIsTogglingFavorite(false)
+    }
   }
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: mockRestaurant.name,
-        text: mockRestaurant.description,
+        title: restaurant.name,
+        text: restaurant.description,
         url: window.location.href,
       })
     } else {
@@ -74,19 +179,19 @@ export default function RestaurantDetail() {
 
   const handleDirections = () => {
     // Open maps app with directions
-    const address = encodeURIComponent(mockRestaurant.address || '')
+    const address = encodeURIComponent(restaurant.address || '')
     window.open(`https://maps.google.com/maps?daddr=${address}`, '_blank')
   }
 
   const handleCall = () => {
-    if (mockRestaurant.phone) {
-      window.open(`tel:${mockRestaurant.phone}`)
+    if (restaurant.phone) {
+      window.open(`tel:${restaurant.phone}`)
     }
   }
 
   const handleWebsite = () => {
-    if (mockRestaurant.website) {
-      window.open(mockRestaurant.website, '_blank')
+    if (restaurant.website) {
+      window.open(restaurant.website, '_blank')
     }
   }
 
@@ -102,18 +207,18 @@ export default function RestaurantDetail() {
         {/* Image placeholder */}
         <div className="absolute inset-0 bg-muted flex items-center justify-center">
           <span className="text-6xl font-bold text-muted-foreground opacity-50">
-            {mockRestaurant.name.charAt(0)}
+            {restaurant.name.charAt(0)}
           </span>
         </div>
         
         {/* Status indicator */}
         <div className="absolute top-4 left-4">
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-            mockRestaurant.isOpen 
+            restaurant.isOpen 
               ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
               : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
           }`}>
-            {mockRestaurant.isOpen ? 'Open' : 'Closed'}
+            {restaurant.isOpen ? 'Open' : 'Closed'}
           </span>
         </div>
         
@@ -144,29 +249,29 @@ export default function RestaurantDetail() {
           transition={{ delay: 0.2 }}
         >
           <div className="flex items-start justify-between mb-3">
-            <h1 className="text-2xl font-bold flex-1">{mockRestaurant.name}</h1>
+            <h1 className="text-2xl font-bold flex-1">{restaurant.name}</h1>
             <div className="flex items-center space-x-1 ml-4">
               <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
-              <span className="font-semibold">{mockRestaurant.rating}</span>
+              <span className="font-semibold">{restaurant.rating || 'N/A'}</span>
             </div>
           </div>
           
-          <p className="text-muted-foreground mb-4">{mockRestaurant.description}</p>
+          <p className="text-muted-foreground mb-4">{restaurant.description || 'No description available.'}</p>
           
           {/* Meta info */}
           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-            <span>{mockRestaurant.cuisine}</span>
+            <span>{restaurant.cuisine || restaurant.cuisine_type || 'Cuisine not specified'}</span>
             <span>•</span>
             <div className="flex items-center space-x-1">
               <DollarSign className="w-3 h-3" />
-              <span>{mockRestaurant.priceRange}</span>
+              <span>{restaurant.priceRange || restaurant.price_range || 'N/A'}</span>
             </div>
-            {mockRestaurant.distance && (
+            {restaurant.distance && (
               <>
                 <span>•</span>
                 <div className="flex items-center space-x-1">
                   <MapPin className="w-3 h-3" />
-                  <span>{Math.round(mockRestaurant.distance / 1000 * 10) / 10} km away</span>
+                  <span>{Math.round(restaurant.distance / 1000 * 10) / 10} km away</span>
                 </div>
               </>
             )}
@@ -258,19 +363,19 @@ export default function RestaurantDetail() {
                   <MapPin className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
                   <div>
                     <h3 className="font-medium mb-1">Address</h3>
-                    <p className="text-sm text-muted-foreground">{mockRestaurant.address}</p>
+                    <p className="text-sm text-muted-foreground">{restaurant.address || 'Address not available'}</p>
                   </div>
                 </div>
               </div>
 
               {/* Contact */}
-              {mockRestaurant.phone && (
+              {restaurant.phone && (
                 <div className="p-4 bg-card rounded-lg border">
                   <div className="flex items-center space-x-3">
                     <Phone className="w-5 h-5 text-primary flex-shrink-0" />
                     <div>
                       <h3 className="font-medium mb-1">Phone</h3>
-                      <p className="text-sm text-muted-foreground">{mockRestaurant.phone}</p>
+                      <p className="text-sm text-muted-foreground">{restaurant.phone}</p>
                     </div>
                   </div>
                 </div>
@@ -287,7 +392,7 @@ export default function RestaurantDetail() {
                 </button>
               </div>
               <div className="space-y-3">
-                {mockMenuHighlights.map((item, index) => (
+                {defaultMenuHighlights.map((item, index) => (
                   <motion.div
                     key={index}
                     className="p-4 bg-card rounded-lg border"
@@ -310,18 +415,28 @@ export default function RestaurantDetail() {
 
           {activeTab === 'hours' && (
             <div className="space-y-3">
-              {Object.entries(mockHours).map(([day, hours], index) => (
-                <motion.div
-                  key={day}
-                  className="flex items-center justify-between p-3 bg-card rounded-lg border"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <span className="font-medium capitalize">{day}</span>
-                  <span className="text-sm text-muted-foreground">{hours}</span>
-                </motion.div>
-              ))}
+              {openingHours && Object.keys(formattedHours).length > 0 ? (
+                Object.entries(formattedHours).map(([day, hours], index) => (
+                  <motion.div
+                    key={day}
+                    className="flex items-center justify-between p-3 bg-card rounded-lg border"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <span className="font-medium capitalize">{day}</span>
+                    <span className={`text-sm ${hours === 'Closed' ? 'text-muted-foreground' : 'text-foreground'}`}>
+                      {hours}
+                    </span>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>Opening hours not available</p>
+                  <p className="text-sm">Please contact the restaurant for current hours</p>
+                </div>
+              )}
             </div>
           )}
         </motion.div>

@@ -7,8 +7,8 @@ export class MealModel {
     const transaction = db.transaction(() => {
       // Insert meal
       const stmt = db.prepare(`
-        INSERT INTO meals (user_id, name, description, cuisine_type, difficulty_level, prep_time, is_favorite)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO meals (user_id, name, description, cuisine_type, difficulty_level, prep_time, ingredients, instructions, is_favorite)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       const result = stmt.run(
@@ -18,7 +18,9 @@ export class MealModel {
         mealData.cuisine_type || null,
         mealData.difficulty_level || null,
         mealData.prep_time || null,
-        mealData.is_favorite ? 1 : 0
+        mealData.ingredients ? JSON.stringify(mealData.ingredients) : '[]',
+        mealData.instructions ? JSON.stringify(mealData.instructions) : '[]',
+        mealData.is_favorite ?? false ? 1 : 0
       );
       
       const mealId = result.lastInsertRowid as number;
@@ -44,12 +46,19 @@ export class MealModel {
       SELECT * FROM meals WHERE id = ?
     `);
     
-    const meal = stmt.get(id) as Meal | undefined;
+    const meal = stmt.get(id) as any;
     if (!meal) return null;
+    
+    // Parse JSON fields
+    const parsedMeal: Meal = {
+      ...meal,
+      ingredients: meal.ingredients ? JSON.parse(meal.ingredients) : [],
+      instructions: meal.instructions ? JSON.parse(meal.instructions) : [],
+    };
     
     // Get tags
     const tags = this.getMealTags(id);
-    return { ...meal, tags };
+    return { ...parsedMeal, tags };
   }
 
   // Find meals by user ID with filters and pagination
@@ -82,7 +91,7 @@ export class MealModel {
     
     if (filters.is_favorite !== undefined) {
       whereClause += ' AND m.is_favorite = ?';
-      queryParams.push(filters.is_favorite);
+      queryParams.push(filters.is_favorite ? 1 : 0);
     }
     
     if (filters.search) {
@@ -118,11 +127,13 @@ export class MealModel {
       LIMIT ? OFFSET ?
     `);
     
-    const meals = stmt.all(...queryParams, limit, offset) as Meal[];
+    const meals = stmt.all(...queryParams, limit, offset) as any[];
     
-    // Add tags to each meal
-    const mealsWithTags = meals.map(meal => ({
+    // Add tags and parse JSON fields for each meal
+    const mealsWithTags: Meal[] = meals.map(meal => ({
       ...meal,
+      ingredients: meal.ingredients ? JSON.parse(meal.ingredients) : [],
+      instructions: meal.instructions ? JSON.parse(meal.instructions) : [],
       tags: this.getMealTags(meal.id)
     }));
     
@@ -163,6 +174,16 @@ export class MealModel {
       if (mealData.is_favorite !== undefined) {
         updateFields.push('is_favorite = ?');
         values.push(mealData.is_favorite ? 1 : 0);
+      }
+      
+      if (mealData.ingredients !== undefined) {
+        updateFields.push('ingredients = ?');
+        values.push(JSON.stringify(mealData.ingredients));
+      }
+      
+      if (mealData.instructions !== undefined) {
+        updateFields.push('instructions = ?');
+        values.push(JSON.stringify(mealData.instructions));
       }
       
       if (updateFields.length > 0) {
@@ -219,10 +240,17 @@ export class MealModel {
       LIMIT 1
     `);
     
-    const meal = stmt.get(userId, userId) as Meal | undefined;
+    const meal = stmt.get(userId, userId) as any;
     if (!meal) return null;
     
-    return { ...meal, tags: this.getMealTags(meal.id) };
+    // Parse JSON fields
+    const parsedMeal: Meal = {
+      ...meal,
+      ingredients: meal.ingredients ? JSON.parse(meal.ingredients) : [],
+      instructions: meal.instructions ? JSON.parse(meal.instructions) : [],
+    };
+    
+    return { ...parsedMeal, tags: this.getMealTags(meal.id) };
   }
 
   // Get meal tags
@@ -263,5 +291,80 @@ export class MealModel {
     `);
     
     return stmt.get(userId);
+  }
+
+  // Find all public meals (cross-user discovery)
+  static findAllPublic(
+    filters: SearchFilters = {},
+    pagination: PaginationOptions = {}
+  ): { meals: Meal[], total: number } {
+    const { page = 1, limit = 20, sort_by = 'created_at', sort_order = 'desc' } = pagination;
+    const offset = (page - 1) * limit;
+    
+    let whereClause = 'WHERE 1=1';
+    const queryParams: any[] = [];
+    
+    // Apply filters (same as regular search but without user_id filter)
+    if (filters.cuisine_type) {
+      whereClause += ' AND m.cuisine_type = ?';
+      queryParams.push(filters.cuisine_type);
+    }
+    
+    if (filters.difficulty_level) {
+      whereClause += ' AND m.difficulty_level = ?';
+      queryParams.push(filters.difficulty_level);
+    }
+    
+    if (filters.prep_time_max) {
+      whereClause += ' AND m.prep_time <= ?';
+      queryParams.push(filters.prep_time_max);
+    }
+    
+    if (filters.search) {
+      whereClause += ' AND (m.name LIKE ? OR m.description LIKE ?)';
+      const searchTerm = `%${filters.search}%`;
+      queryParams.push(searchTerm, searchTerm);
+    }
+    
+    // Handle tag filtering
+    if (filters.tag_ids && filters.tag_ids.length > 0) {
+      const tagPlaceholders = filters.tag_ids.map(() => '?').join(',');
+      whereClause += ` AND m.id IN (
+        SELECT mt.meal_id FROM meal_tags mt 
+        WHERE mt.tag_id IN (${tagPlaceholders})
+        GROUP BY mt.meal_id
+        HAVING COUNT(DISTINCT mt.tag_id) = ?
+      )`;
+      queryParams.push(...filters.tag_ids, filters.tag_ids.length);
+    }
+    
+    // Count total results
+    const countStmt = db.prepare(`
+      SELECT COUNT(*) as total FROM meals m ${whereClause}
+    `);
+    const totalResult = countStmt.get(...queryParams) as { total: number };
+    const total = totalResult.total;
+    
+    // Get paginated results with user info
+    const stmt = db.prepare(`
+      SELECT m.*, u.username as creator_username
+      FROM meals m 
+      JOIN users u ON m.user_id = u.id
+      ${whereClause}
+      ORDER BY m.${sort_by} ${sort_order}
+      LIMIT ? OFFSET ?
+    `);
+    
+    const meals = stmt.all(...queryParams, limit, offset) as any[];
+    
+    // Add tags and parse JSON fields for each meal
+    const mealsWithTags: Meal[] = meals.map(meal => ({
+      ...meal,
+      ingredients: meal.ingredients ? JSON.parse(meal.ingredients) : [],
+      instructions: meal.instructions ? JSON.parse(meal.instructions) : [],
+      tags: this.getMealTags(meal.id)
+    }));
+    
+    return { meals: mealsWithTags, total };
   }
 }

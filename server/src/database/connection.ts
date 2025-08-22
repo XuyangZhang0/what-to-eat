@@ -94,6 +94,6 @@ const dbManager = DatabaseManager.getInstance({
   verbose: process.env.NODE_ENV === 'development'
 });
 
-export const db = dbManager.getDatabase();
+export const db: any = dbManager.getDatabase();
 export default dbManager;
 export { DatabaseManager };

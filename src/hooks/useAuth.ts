@@ -10,6 +10,7 @@ interface AuthContextType {
   user: User | null
   token: string | null
   login: (email: string, password: string) => Promise<boolean>
+  register: (username: string, email: string, password: string) => Promise<boolean>
   logout: () => void
   isAuthenticated: boolean
   isLoading: boolean
@@ -55,7 +56,7 @@ export function useAuthImplementation() {
     try {
       setIsLoading(true)
       
-      const response = await fetch('http://10.0.6.165:3001/api/auth/login', {
+      const response = await fetch('http://10.0.6.165:3002/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -93,6 +94,48 @@ export function useAuthImplementation() {
     }
   }
 
+  const register = async (username: string, email: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true)
+      
+      const response = await fetch('http://10.0.6.165:3002/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, email, password }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          const { token, user } = result.data
+          
+          setToken(token)
+          setUser(user)
+          
+          localStorage.setItem('auth_token', token)
+          localStorage.setItem('auth_user', JSON.stringify(user))
+          
+          return true
+        } else {
+          console.error('Registration failed:', result.error || 'Unknown error')
+          return false
+        }
+      } else {
+        const errorResult = await response.json()
+        console.error('Registration failed:', response.status, errorResult.error)
+        return false
+      }
+    } catch (error) {
+      console.error('Registration error:', error)
+      return false
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const logout = () => {
     setUser(null)
     setToken(null)
@@ -106,6 +149,7 @@ export function useAuthImplementation() {
     user,
     token,
     login,
+    register,
     logout,
     isAuthenticated,
     isLoading,

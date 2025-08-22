@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import SlotMachine from './index'
-import { createSampleSlotItems } from './utils'
 import type { SlotItem } from './types'
 
 // Mock framer-motion
@@ -37,8 +36,56 @@ vi.mock('@/hooks/useShakeDetection', () => ({
   }),
 }))
 
+// Helper function to create test slot items
+function createTestSlotItems(): SlotItem[] {
+  return [
+    {
+      id: 1,
+      name: 'Test Meal 1',
+      description: 'A test meal',
+      category: 'dinner',
+      type: 'meal',
+      cuisine: 'Italian',
+      difficulty: 'easy',
+      cookingTime: 30,
+      emoji: '🍝',
+      isFavorite: true,
+      ingredients: ['pasta', 'sauce'],
+      instructions: ['Cook pasta', 'Add sauce'],
+    },
+    {
+      id: 2,
+      name: 'Test Restaurant 1',
+      description: 'A test restaurant',
+      category: 'Italian',
+      type: 'restaurant',
+      cuisine: 'Italian',
+      rating: 4.5,
+      priceRange: '$$',
+      emoji: '🍕',
+      isFavorite: true,
+      address: '123 Test St',
+      phone: '555-0123',
+    },
+    {
+      id: 3,
+      name: 'Test Meal 2',
+      description: 'Another test meal',
+      category: 'lunch',
+      type: 'meal',
+      cuisine: 'Chinese',
+      difficulty: 'medium',
+      cookingTime: 45,
+      emoji: '🥢',
+      isFavorite: true,
+      ingredients: ['rice', 'vegetables'],
+      instructions: ['Cook rice', 'Stir fry vegetables'],
+    },
+  ];
+}
+
 describe('SlotMachine', () => {
-  const mockItems = createSampleSlotItems()
+  const mockItems = createTestSlotItems()
   const mockOnSelection = vi.fn()
   const mockOnShakeReset = vi.fn()
 

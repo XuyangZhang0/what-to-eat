@@ -1,5 +1,6 @@
 import { db } from '@/database/connection.js';
 import { Restaurant, CreateRestaurantData, UpdateRestaurantData, SearchFilters, PaginationOptions, Tag } from './types.js';
+import { OpeningHoursService } from '@/services/openingHoursService.js';
 
 export class RestaurantModel {
   // Create a new restaurant
@@ -7,8 +8,8 @@ export class RestaurantModel {
     const transaction = db.transaction(() => {
       // Insert restaurant
       const stmt = db.prepare(`
-        INSERT INTO restaurants (user_id, name, cuisine_type, address, phone, price_range, is_favorite, rating)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO restaurants (user_id, name, cuisine_type, address, phone, price_range, is_favorite, rating, opening_hours)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       const result = stmt.run(
@@ -18,8 +19,9 @@ export class RestaurantModel {
         restaurantData.address || null,
         restaurantData.phone || null,
         restaurantData.price_range || null,
-        restaurantData.is_favorite ? 1 : 0,
-        restaurantData.rating || null
+        restaurantData.is_favorite ?? false ? 1 : 0,
+        restaurantData.rating || null,
+        restaurantData.opening_hours ? JSON.stringify(restaurantData.opening_hours) : '{}'
       );
       
       const restaurantId = result.lastInsertRowid as number;
@@ -45,12 +47,26 @@ export class RestaurantModel {
       SELECT * FROM restaurants WHERE id = ?
     `);
     
-    const restaurant = stmt.get(id) as Restaurant | undefined;
+    const restaurant = stmt.get(id) as any;
     if (!restaurant) return null;
+    
+    // Parse opening hours JSON
+    const openingHours = restaurant.opening_hours 
+      ? JSON.parse(restaurant.opening_hours)
+      : null;
     
     // Get tags
     const tags = this.getRestaurantTags(id);
-    return { ...restaurant, tags };
+    
+    // Add isOpen status
+    const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+    
+    return { 
+      ...restaurant, 
+      opening_hours: openingHours,
+      isOpen,
+      tags 
+    };
   }
 
   // Find restaurants by user ID with filters and pagination
@@ -83,7 +99,7 @@ export class RestaurantModel {
     
     if (filters.is_favorite !== undefined) {
       whereClause += ' AND r.is_favorite = ?';
-      queryParams.push(filters.is_favorite);
+      queryParams.push(filters.is_favorite ? 1 : 0);
     }
     
     if (filters.search) {
@@ -121,11 +137,20 @@ export class RestaurantModel {
     
     const restaurants = stmt.all(...queryParams, limit, offset) as Restaurant[];
     
-    // Add tags to each restaurant
-    const restaurantsWithTags = restaurants.map(restaurant => ({
-      ...restaurant,
-      tags: this.getRestaurantTags(restaurant.id)
-    }));
+    // Add tags and parse opening hours for each restaurant
+    const restaurantsWithTags = restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
+        ? JSON.parse(restaurant.opening_hours)
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
     
     return { restaurants: restaurantsWithTags, total };
   }
@@ -169,6 +194,11 @@ export class RestaurantModel {
       if (restaurantData.rating !== undefined) {
         updateFields.push('rating = ?');
         values.push(restaurantData.rating);
+      }
+      
+      if (restaurantData.opening_hours !== undefined) {
+        updateFields.push('opening_hours = ?');
+        values.push(JSON.stringify(restaurantData.opening_hours));
       }
       
       if (updateFields.length > 0) {
@@ -226,10 +256,20 @@ export class RestaurantModel {
       LIMIT 1
     `);
     
-    const restaurant = stmt.get(userId, userId) as Restaurant | undefined;
+    const restaurant = stmt.get(userId, userId) as any;
     if (!restaurant) return null;
     
-    return { ...restaurant, tags: this.getRestaurantTags(restaurant.id) };
+    const openingHours = restaurant.opening_hours 
+      ? JSON.parse(restaurant.opening_hours)
+      : null;
+    const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+    
+    return { 
+      ...restaurant, 
+      opening_hours: openingHours,
+      isOpen,
+      tags: this.getRestaurantTags(restaurant.id) 
+    };
   }
 
   // Get restaurant tags
@@ -303,9 +343,100 @@ export class RestaurantModel {
     
     const restaurants = stmt.all(userId, limit) as Restaurant[];
     
-    return restaurants.map(restaurant => ({
-      ...restaurant,
-      tags: this.getRestaurantTags(restaurant.id)
-    }));
+    return restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
+        ? JSON.parse(restaurant.opening_hours)
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
+  }
+
+  // Find all public restaurants (cross-user discovery)
+  static findAllPublic(
+    filters: SearchFilters = {},
+    pagination: PaginationOptions = {}
+  ): { restaurants: Restaurant[], total: number } {
+    const { page = 1, limit = 20, sort_by = 'created_at', sort_order = 'desc' } = pagination;
+    const offset = (page - 1) * limit;
+    
+    let whereClause = 'WHERE 1=1';
+    const queryParams: any[] = [];
+    
+    // Apply filters (same as regular search but without user_id filter)
+    if (filters.cuisine_type) {
+      whereClause += ' AND r.cuisine_type = ?';
+      queryParams.push(filters.cuisine_type);
+    }
+    
+    if (filters.price_range) {
+      whereClause += ' AND r.price_range = ?';
+      queryParams.push(filters.price_range);
+    }
+    
+    if (filters.rating_min) {
+      whereClause += ' AND r.rating >= ?';
+      queryParams.push(filters.rating_min);
+    }
+    
+    if (filters.search) {
+      whereClause += ' AND (r.name LIKE ? OR r.address LIKE ?)';
+      const searchTerm = `%${filters.search}%`;
+      queryParams.push(searchTerm, searchTerm);
+    }
+    
+    // Handle tag filtering
+    if (filters.tag_ids && filters.tag_ids.length > 0) {
+      const tagPlaceholders = filters.tag_ids.map(() => '?').join(',');
+      whereClause += ` AND r.id IN (
+        SELECT rt.restaurant_id FROM restaurant_tags rt 
+        WHERE rt.tag_id IN (${tagPlaceholders})
+        GROUP BY rt.restaurant_id
+        HAVING COUNT(DISTINCT rt.tag_id) = ?
+      )`;
+      queryParams.push(...filters.tag_ids, filters.tag_ids.length);
+    }
+    
+    // Count total results
+    const countStmt = db.prepare(`
+      SELECT COUNT(*) as total FROM restaurants r ${whereClause}
+    `);
+    const totalResult = countStmt.get(...queryParams) as { total: number };
+    const total = totalResult.total;
+    
+    // Get paginated results with user info
+    const stmt = db.prepare(`
+      SELECT r.*, u.username as creator_username
+      FROM restaurants r 
+      JOIN users u ON r.user_id = u.id
+      ${whereClause}
+      ORDER BY r.${sort_by} ${sort_order}
+      LIMIT ? OFFSET ?
+    `);
+    
+    const restaurants = stmt.all(...queryParams, limit, offset) as any[];
+    
+    // Add tags and parse JSON fields for each restaurant
+    const restaurantsWithTags = restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
+        ? JSON.parse(restaurant.opening_hours)
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
+    
+    return { restaurants: restaurantsWithTags, total };
   }
 }

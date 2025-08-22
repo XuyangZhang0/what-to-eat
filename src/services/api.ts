@@ -1,8 +1,9 @@
 import { Meal, Restaurant, SearchFilter, SearchMode } from '@/types'
 import { CreateMealData, UpdateMealData, CreateRestaurantData, UpdateRestaurantData, Tag, CreateTagData, UpdateTagData, PaginatedResponse } from '@/types/api'
 import { withNetworkRetry } from '@/hooks/useNetwork'
+import { normalizeRestaurant, normalizeMeal } from '@/utils/favorites'
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.0.6.165:3001/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.0.6.165:3002/api'
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -40,10 +41,17 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
       
       // Try to get error details from response
       const errorData = await response.json().catch(() => null)
-      throw new ApiError(
-        response.status, 
-        errorData?.error || errorData?.message || `HTTP ${response.status}: ${response.statusText}`
-      )
+      const errorMessage = errorData?.error || errorData?.message || `HTTP ${response.status}: ${response.statusText}`
+      
+      console.error('API Error:', {
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        errorData,
+        errorMessage
+      })
+      
+      throw new ApiError(response.status, errorMessage)
     }
 
     const result = await response.json()
@@ -63,7 +71,6 @@ export const mealsApi = {
   async getMeals(filters?: SearchFilter): Promise<Meal[]> {
     const params = new URLSearchParams()
     
-    if (filters?.category) params.append('category', filters.category)
     if (filters?.cuisine) params.append('cuisine', filters.cuisine)
     if (filters?.difficulty) params.append('difficulty', filters.difficulty)
     if (filters?.maxCookingTime) params.append('maxCookingTime', filters.maxCookingTime.toString())
@@ -72,16 +79,20 @@ export const mealsApi = {
     return fetchApi<Meal[]>(`/meals${query}`)
   },
 
-  // Get a specific meal by ID
+  // Get a specific meal by ID (authenticated)
   async getMeal(id: string): Promise<Meal> {
     return fetchApi<Meal>(`/meals/${id}`)
+  },
+
+  // View a meal publicly (no authentication required)
+  async viewMeal(id: string): Promise<Meal> {
+    return fetchApi<Meal>(`/meals/view/${id}`)
   },
 
   // Search meals by query
   async searchMeals(query: string, filters?: SearchFilter): Promise<Meal[]> {
     const params = new URLSearchParams({ q: query })
     
-    if (filters?.category) params.append('category', filters.category)
     if (filters?.cuisine) params.append('cuisine', filters.cuisine)
     if (filters?.difficulty) params.append('difficulty', filters.difficulty)
     if (filters?.maxCookingTime) params.append('maxCookingTime', filters.maxCookingTime.toString())
@@ -93,7 +104,6 @@ export const mealsApi = {
   async getRandomMeal(filters?: SearchFilter): Promise<Meal> {
     const params = new URLSearchParams()
     
-    if (filters?.category) params.append('category', filters.category)
     if (filters?.cuisine) params.append('cuisine', filters.cuisine)
     if (filters?.difficulty) params.append('difficulty', filters.difficulty)
     if (filters?.maxCookingTime) params.append('maxCookingTime', filters.maxCookingTime.toString())
@@ -145,13 +155,19 @@ export const mealsApi = {
     })
   },
 
-  // Demo methods for slot machine (no auth required)
-  async getDemoMeals(): Promise<Meal[]> {
-    return fetchApi<Meal[]>('/meals/demo')
-  },
-
-  async getRandomDemoMeal(): Promise<Meal> {
-    return fetchApi<Meal>('/meals/demo/random')
+  // Discovery methods for cross-user browsing (no auth required)
+  async discoverMeals(filters?: SearchFilter): Promise<Meal[]> {
+    const params = new URLSearchParams()
+    
+    if (filters?.cuisine) params.append('cuisine_type', filters.cuisine)
+    if (filters?.difficulty) params.append('difficulty_level', filters.difficulty)
+    if (filters?.maxCookingTime) params.append('prep_time_max', filters.maxCookingTime.toString())
+    
+    const query = params.toString() ? `?${params.toString()}` : ''
+    const meals = await fetchApi<any[]>(`/meals/discover${query}`)
+    
+    // Normalize meal data to ensure consistent format
+    return meals.map(meal => normalizeMeal(meal))
   },
 }
 
@@ -170,12 +186,20 @@ export const restaurantsApi = {
     }
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Restaurant[]>(`/restaurants${query}`)
+    const restaurants = await fetchApi<any[]>(`/restaurants${query}`)
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
   },
 
   // Get a specific restaurant by ID
   async getRestaurant(id: string): Promise<Restaurant> {
-    return fetchApi<Restaurant>(`/restaurants/${id}`)
+    const restaurant = await fetchApi<any>(`/restaurants/${id}`)
+    return normalizeRestaurant(restaurant)
+  },
+
+  // View any restaurant by ID (public access with optional authentication)
+  async viewRestaurant(id: string): Promise<Restaurant> {
+    const restaurant = await fetchApi<any>(`/restaurants/view/${id}`)
+    return normalizeRestaurant(restaurant)
   },
 
   // Search restaurants by query
@@ -192,7 +216,8 @@ export const restaurantsApi = {
       params.append('lng', location.lng.toString())
     }
     
-    return fetchApi<Restaurant[]>(`/restaurants/search?${params.toString()}`)
+    const restaurants = await fetchApi<any[]>(`/restaurants/search?${params.toString()}`)
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
   },
 
   // Get random restaurant
@@ -209,7 +234,8 @@ export const restaurantsApi = {
     }
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Restaurant>(`/restaurants/random${query}`)
+    const restaurant = await fetchApi<any>(`/restaurants/random${query}`)
+    return normalizeRestaurant(restaurant)
   },
 
   // Create new restaurant
@@ -259,6 +285,58 @@ export const restaurantsApi = {
       method: 'POST',
     })
   },
+  // Get restaurant suggestions for autocomplete (from saved restaurants)
+  async getRestaurantSuggestions(query: string, limit?: number): Promise<Restaurant[]> {
+    const params = new URLSearchParams({ q: query })
+    if (limit) params.append('limit', limit.toString())
+    
+    const queryString = params.toString() ? `?${params.toString()}` : ''
+    return fetchApi<Restaurant[]>(`/restaurants/suggestions${queryString}`)
+  },
+  // Search external restaurants from the internet
+  async searchExternalRestaurants(query: string, location?: { lat: number; lng: number }, radius?: number): Promise<any[]> {
+    const params = new URLSearchParams({ q: query })
+    if (location) {
+      params.append('lat', location.lat.toString())
+      params.append('lng', location.lng.toString())
+    }
+    if (radius) params.append('radius', radius.toString())
+    
+    const response = await fetchApi<any[]>(`/restaurant-search?${params.toString()}`)
+    return response || []
+  },
+  // Get detailed restaurant information from external API
+  async getExternalRestaurantDetails(placeId: string): Promise<any> {
+    console.log('API: Getting details for place_id:', placeId)
+    const response = await fetchApi<any>(`/restaurant-search/details/${placeId}`)
+    console.log('API: Raw response from details API:', response)
+    console.log('API: Response opening_hours:', response?.opening_hours)
+    console.log('API: Response has opening_hours?', !!response?.opening_hours)
+    if (response?.opening_hours) {
+      console.log('API: Opening hours structure:', JSON.stringify(response.opening_hours, null, 2))
+    }
+    return response
+  },
+  
+  // Discovery methods for cross-user browsing (no auth required)
+  async discoverRestaurants(
+    filters?: SearchFilter,
+    location?: { lat: number; lng: number }
+  ): Promise<Restaurant[]> {
+    const params = new URLSearchParams()
+    
+    if (filters?.cuisine) params.append('cuisine_type', filters.cuisine)
+    if (location) {
+      params.append('lat', location.lat.toString())
+      params.append('lng', location.lng.toString())
+    }
+    
+    const query = params.toString() ? `?${params.toString()}` : ''
+    const restaurants = await fetchApi<any[]>(`/restaurants/discover${query}`)
+    
+    // Normalize restaurant data to ensure consistent format
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
+  },
 }
 
 export const favoritesApi = {
@@ -276,6 +354,88 @@ export const favoritesApi = {
   async getFavoriteRestaurants(): Promise<Restaurant[]> {
     return fetchApi<Restaurant[]>('/favorites/restaurants')
   },
+}
+
+// User favorites API for cross-user favoriting (discovered items)
+export const userFavoritesApi = {
+  // Toggle meal favorite status (for discovered meals from other users)
+  async toggleMealFavorite(id: string): Promise<{ is_favorite: boolean }> {
+    console.log('API: Toggling meal favorite for ID:', id)
+    try {
+      const result = await fetchApi<{ is_favorite: boolean }>(`/user-favorites/meals/${id}/toggle`, {
+        method: 'POST',
+      })
+      console.log('API: Meal favorite toggle result:', result)
+      
+      // Ensure is_favorite is a boolean
+      return {
+        ...result,
+        is_favorite: Boolean(result.is_favorite)
+      }
+    } catch (error) {
+      console.error('API: Error toggling meal favorite:', error)
+      throw error
+    }
+  },
+
+  // Toggle restaurant favorite status (for discovered restaurants from other users)  
+  async toggleRestaurantFavorite(id: string): Promise<{ is_favorite: boolean }> {
+    console.log('API: Toggling restaurant favorite for ID:', id)
+    try {
+      const result = await fetchApi<{ is_favorite: boolean }>(`/user-favorites/restaurants/${id}/toggle`, {
+        method: 'POST',
+      })
+      console.log('API: Restaurant favorite toggle result:', result)
+      
+      // Ensure is_favorite is a boolean
+      return {
+        ...result,
+        is_favorite: Boolean(result.is_favorite)
+      }
+    } catch (error) {
+      console.error('API: Error toggling restaurant favorite:', error)
+      throw error
+    }
+  },
+}
+
+export const randomApi = {
+  // Get selection history
+  async getSelectionHistory(params?: { page?: number; limit?: number }): Promise<{
+    data: Array<{
+      id: number
+      user_id: number
+      item_type: 'meal' | 'restaurant'
+      item_id: number
+      selected_at: string
+    }>
+    pagination: {
+      page: number
+      limit: number
+      total: number
+      total_pages: number
+    }
+  }> {
+    const query = new URLSearchParams()
+    if (params?.page) query.append('page', params.page.toString())
+    if (params?.limit) query.append('limit', params.limit.toString())
+    
+    return fetchApi<{
+      data: Array<{
+        id: number
+        user_id: number
+        item_type: 'meal' | 'restaurant'
+        item_id: number
+        selected_at: string
+      }>
+      pagination: {
+        page: number
+        limit: number
+        total: number
+        total_pages: number
+      }
+    }>(`/random/history?${query.toString()}`)
+  }
 }
 
 export const authApi = {
@@ -319,12 +479,12 @@ export const authApi = {
 
   // Get current user profile
   async getProfile(): Promise<any> {
-    return fetchApi<any>('/auth/profile')
+    return fetchApi<any>('/auth/me')
   },
 
   // Update user profile
   async updateProfile(data: any): Promise<any> {
-    return fetchApi<any>('/auth/profile', {
+    return fetchApi<any>('/auth/me', {
       method: 'PUT',
       body: JSON.stringify(data),
     })
@@ -431,4 +591,21 @@ export async function getRandomSuggestion(
   } else {
     return restaurantsApi.getRandomRestaurant(filters, location)
   }
+}
+
+// Get multiple random suggestions based on user preferences
+export async function getMultipleRandomSuggestions(
+  filters?: SearchFilter
+): Promise<Array<{ meal?: Meal; restaurant?: Restaurant; type: 'meal' | 'restaurant' }>> {
+  const response = await fetchApi<{ 
+    data: Array<{ meal?: Meal; restaurant?: Restaurant; type: 'meal' | 'restaurant' }>; 
+    count: number 
+  }>('/random/multiple', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ filters }),
+  })
+  return response.data
 }

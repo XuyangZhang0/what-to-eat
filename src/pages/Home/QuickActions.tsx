@@ -1,12 +1,10 @@
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Coffee, Sandwich, UtensilsCrossed, Cookie, Dices } from 'lucide-react'
+import { Heart, Dices, Sparkles, Zap } from 'lucide-react'
 
 const quickActions = [
-  { id: 'breakfast', icon: Coffee, label: 'Breakfast', category: 'breakfast', type: 'search' },
-  { id: 'lunch', icon: Sandwich, label: 'Lunch', category: 'lunch', type: 'search' },
-  { id: 'dinner', icon: UtensilsCrossed, label: 'Dinner', category: 'dinner', type: 'search' },
-  { id: 'slot-machine', icon: Dices, label: 'Slot Machine', category: '', type: 'route' },
+  { id: 'mood-suggestions', icon: Heart, label: 'Mood-Based', category: '', type: 'route' },
+  { id: 'slot-machine', icon: Dices, label: 'I am Feeling Lucky', category: '', type: 'route' },
 ]
 
 export default function QuickActions() {
@@ -28,7 +26,7 @@ export default function QuickActions() {
       transition={{ delay: 0.4 }}
     >
       <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {quickActions.map((action, index) => {
           const Icon = action.icon
           return (

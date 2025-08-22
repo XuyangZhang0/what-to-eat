@@ -1,13 +1,22 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, Clock, Star, MapPin, Heart } from 'lucide-react'
 import { SearchFilter, SearchMode, Meal, Restaurant } from '@/types'
+import { userFavoritesApi } from '@/services/api'
+import { useToast } from '@/hooks/useToast'
+import { useAuth } from '@/hooks/useAuth'
+import { getFavoriteStatus, updateFavoriteStatus } from '@/utils/favorites'
 
 interface SearchResultsProps {
   query: string
   mode: SearchMode
   filters: SearchFilter
   isSearching: boolean
+  items: (Meal | Restaurant)[]
+  hasSearched: boolean
+  onRandomSearch: () => void
+  onItemUpdate?: (updatedItem: Meal | Restaurant) => void
 }
 
 // Mock data - replace with actual API calls
@@ -65,8 +74,11 @@ const mockRestaurants: Restaurant[] = [
   },
 ]
 
-export default function SearchResults({ query, mode, filters, isSearching }: SearchResultsProps) {
+export default function SearchResults({ query, mode, filters, isSearching, items, hasSearched, onRandomSearch, onItemUpdate }: SearchResultsProps) {
   const navigate = useNavigate()
+  const { toast } = useToast()
+  const { isAuthenticated } = useAuth()
+  const [updatingFavorites, setUpdatingFavorites] = useState<Set<string>>(new Set())
 
   const handleItemClick = (item: Meal | Restaurant) => {
     if (mode === 'meals') {
@@ -76,23 +88,97 @@ export default function SearchResults({ query, mode, filters, isSearching }: Sea
     }
   }
 
+  const handleFavoriteToggle = async (item: Meal | Restaurant) => {
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      toast({
+        type: 'warning',
+        message: 'Please log in to add items to your favorites',
+        duration: 3000
+      })
+      return
+    }
+
+    try {
+      // Prevent multiple simultaneous updates
+      if (updatingFavorites.has(item.id)) return
+      
+      setUpdatingFavorites(prev => new Set(prev).add(item.id))
+      
+      // Get current favorite status using utility function
+      const currentFavoriteStatus = getFavoriteStatus(item)
+      const newFavoriteStatus = !currentFavoriteStatus
+      
+      console.log('Toggling favorite for:', item.name, 'from:', currentFavoriteStatus, 'to:', newFavoriteStatus)
+      
+      // Use the user favorites API for cross-user favoriting
+      let result
+      if (mode === 'meals') {
+        result = await userFavoritesApi.toggleMealFavorite(item.id)
+      } else {
+        result = await userFavoritesApi.toggleRestaurantFavorite(item.id)
+      }
+      
+      console.log('API response:', result)
+      console.log('Successfully updated favorite status to:', result.is_favorite)
+      
+      // Create updated item with both formats for compatibility
+      const updatedItem = updateFavoriteStatus(item, result.is_favorite)
+      
+      // Notify parent component about the update
+      if (onItemUpdate) {
+        onItemUpdate(updatedItem)
+      }
+      
+      // Dispatch custom event to notify other components of favorite update
+      window.dispatchEvent(new CustomEvent('favoritesUpdated', {
+        detail: {
+          itemId: item.id,
+          itemType: mode === 'meals' ? 'meal' : 'restaurant',
+          itemName: item.name,
+          isFavorite: result.is_favorite
+        }
+      }))
+      
+      // Show success toast
+      toast({
+        type: 'success',
+        message: `${item.name} ${result.is_favorite ? 'added to' : 'removed from'} favorites`,
+        duration: 2000
+      })
+      
+    } catch (error) {
+      console.error('Failed to toggle favorite:', error)
+      console.error('Error details:', {
+        itemId: item.id,
+        itemName: item.name,
+        mode,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error
+      })
+      
+      // Show error toast with specific error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update favorite status'
+      toast({
+        type: 'error',
+        message: `Failed to favorite ${item.name}: ${errorMessage}`,
+        duration: 4000
+      })
+    } finally {
+      setUpdatingFavorites(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(item.id)
+        return newSet
+      })
+    }
+  }
+
   // Filter results based on filters
-  const filteredMeals = mockMeals.filter(meal => {
-    if (filters.category && meal.category !== filters.category) return false
-    if (filters.cuisine && meal.cuisine !== filters.cuisine) return false
-    if (filters.difficulty && meal.difficulty !== filters.difficulty) return false
-    if (filters.maxCookingTime && meal.cookingTime && meal.cookingTime > filters.maxCookingTime) return false
-    if (query && !meal.name.toLowerCase().includes(query.toLowerCase())) return false
-    return true
-  })
-
-  const filteredRestaurants = mockRestaurants.filter(restaurant => {
-    if (filters.cuisine && restaurant.cuisine !== filters.cuisine) return false
-    if (query && !restaurant.name.toLowerCase().includes(query.toLowerCase())) return false
-    return true
-  })
-
-  const results = mode === 'meals' ? filteredMeals : filteredRestaurants
+  // Use actual results from API instead of mock data
+  const displayResults = items
   const hasFilters = Object.keys(filters).length > 0 || query.length > 0
 
   if (isSearching) {
@@ -104,7 +190,7 @@ export default function SearchResults({ query, mode, filters, isSearching }: Sea
     )
   }
 
-  if (!hasFilters) {
+  if (!hasFilters && !hasSearched) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 text-center">
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -118,7 +204,7 @@ export default function SearchResults({ query, mode, filters, isSearching }: Sea
     )
   }
 
-  if (results.length === 0) {
+  if (displayResults.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 text-center">
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
@@ -136,12 +222,12 @@ export default function SearchResults({ query, mode, filters, isSearching }: Sea
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-muted-foreground">
-          {results.length} {results.length === 1 ? 'result' : 'results'} found
+          {displayResults.length} {displayResults.length === 1 ? 'result' : 'results'} found
         </p>
       </div>
 
       <div className="space-y-4">
-        {results.map((item, index) => (
+        {displayResults.map((item, index) => (
           <motion.button
             key={item.id}
             onClick={() => handleItemClick(item)}
@@ -211,13 +297,33 @@ export default function SearchResults({ query, mode, filters, isSearching }: Sea
                         <span className="font-medium">{(item as Restaurant).rating}</span>
                       </div>
                     )}
-                    <Heart 
-                      className={`w-4 h-4 ${
-                        item.isFavorite 
-                          ? 'fill-red-500 text-red-500' 
-                          : 'text-muted-foreground'
-                      }`} 
-                    />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleFavoriteToggle(item)
+                      }}
+                      disabled={updatingFavorites.has(item.id)}
+                      className={`p-1 rounded transition-colors ${
+                        isAuthenticated 
+                          ? 'hover:bg-muted disabled:opacity-50' 
+                          : 'opacity-70 hover:opacity-100'
+                      }`}
+                      title={isAuthenticated ? 'Toggle favorite' : 'Login to add to favorites'}
+                    >
+                      {updatingFavorites.has(item.id) ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <Heart 
+                          className={`w-4 h-4 ${
+                            getFavoriteStatus(item)
+                              ? 'fill-red-500 text-red-500' 
+                              : isAuthenticated
+                                ? 'text-muted-foreground hover:text-red-500'
+                                : 'text-muted-foreground/60'
+                          }`} 
+                        />
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { Meal, Restaurant } from '@/types'
-import { Tag, ExportData, ImportResult } from '@/types/api'
+import { ExportData, ImportResult } from '@/types/api'
 import { mealsApi, restaurantsApi, tagsApi } from '@/services/api'
 
 export const exportData = async (): Promise<void> => {
@@ -70,7 +70,6 @@ export const importData = async (file: File): Promise<ImportResult> => {
             await mealsApi.createMeal({
               name: meal.name,
               description: meal.description,
-              category: meal.category,
               cuisine: meal.cuisine,
               difficulty: meal.difficulty,
               cookingTime: meal.cookingTime,
@@ -135,12 +134,6 @@ export const generateReport = async (): Promise<string> => {
       return acc
     }, {} as Record<string, number>)
 
-    const mealsByCategory = meals.reduce((acc, meal) => {
-      const category = meal.category
-      acc[category] = (acc[category] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-
     const restaurantsByCuisine = restaurants.reduce((acc, restaurant) => {
       const cuisine = restaurant.cuisine
       acc[cuisine] = (acc[cuisine] || 0) + 1
@@ -171,9 +164,6 @@ Generated on: ${new Date().toLocaleString()}
 - **Favorite Restaurants**: ${favoriteCount.restaurants}
 
 ## Meals Analysis
-
-### By Category
-${Object.entries(mealsByCategory).map(([category, count]) => `- ${category}: ${count}`).join('\n')}
 
 ### By Cuisine
 ${Object.entries(mealsByCuisine).map(([cuisine, count]) => `- ${cuisine}: ${count}`).join('\n')}

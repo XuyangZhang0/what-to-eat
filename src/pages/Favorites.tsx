@@ -1,47 +1,80 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Heart, Clock, Star, MapPin } from 'lucide-react'
+import { Heart, Clock, Star, MapPin, RefreshCw } from 'lucide-react'
 import { Meal, Restaurant } from '@/types'
-
-// Mock favorite data
-const favoriteMeals: Meal[] = [
-  {
-    id: '2',
-    name: 'Avocado Toast',
-    description: 'Creamy avocado on toasted sourdough with a sprinkle of everything seasoning',
-    category: 'breakfast',
-    cuisine: 'American',
-    difficulty: 'easy',
-    cookingTime: 10,
-    tags: ['vegetarian', 'healthy'],
-    isFavorite: true,
-  },
-]
-
-const favoriteRestaurants: Restaurant[] = [
-  {
-    id: '2',
-    name: 'Sushi Garden',
-    description: 'Fresh sushi and Japanese cuisine',
-    cuisine: 'Japanese',
-    address: '456 Oak Ave, City',
-    rating: 4.8,
-    priceRange: '$$$',
-    distance: 800,
-    isOpen: true,
-    isFavorite: true,
-  },
-]
+import { favoritesApi } from '@/services/api'
 
 export default function Favorites() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'meals' | 'restaurants'>('meals')
+
+  // Fetch favorite meals
+  const {
+    data: favoriteMeals = [],
+    isLoading: mealsLoading,
+    error: mealsError,
+    refetch: refetchMeals,
+  } = useQuery({
+    queryKey: ['favorites', 'meals'],
+    queryFn: favoritesApi.getFavoriteMeals,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  })
+
+  // Fetch favorite restaurants
+  const {
+    data: favoriteRestaurants = [],
+    isLoading: restaurantsLoading,
+    error: restaurantsError,
+    refetch: refetchRestaurants,
+  } = useQuery({
+    queryKey: ['favorites', 'restaurants'],
+    queryFn: favoritesApi.getFavoriteRestaurants,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  })
+
+  // Listen for favorite updates from other components
+  useEffect(() => {
+    const handleFavoriteUpdate = (event: CustomEvent) => {
+      const { itemType, itemId, isFavorite } = event.detail
+      
+      console.log('Favorites page: Received favorite update', { itemType, itemId, isFavorite })
+      
+      // Invalidate and refetch the appropriate favorites
+      if (itemType === 'meal') {
+        queryClient.invalidateQueries({ queryKey: ['favorites', 'meals'] })
+      } else if (itemType === 'restaurant') {
+        queryClient.invalidateQueries({ queryKey: ['favorites', 'restaurants'] })
+      }
+      
+      // Also invalidate the general favorites query
+      queryClient.invalidateQueries({ queryKey: ['favorites'] })
+    }
+
+    // Listen for the favoritesUpdated event from all components
+    window.addEventListener('favoritesUpdated', handleFavoriteUpdate as EventListener)
+
+    return () => {
+      window.removeEventListener('favoritesUpdated', handleFavoriteUpdate as EventListener)
+    }
+  }, [queryClient])
 
   const handleItemClick = (item: Meal | Restaurant, type: 'meal' | 'restaurant') => {
     navigate(`/${type}/${item.id}`)
   }
 
+  const handleRefresh = () => {
+    if (activeTab === 'meals') {
+      refetchMeals()
+    } else {
+      refetchRestaurants()
+    }
+  }
+
+  const isLoading = activeTab === 'meals' ? mealsLoading : restaurantsLoading
+  const error = activeTab === 'meals' ? mealsError : restaurantsError
   const hasFavorites = favoriteMeals.length > 0 || favoriteRestaurants.length > 0
   const currentItems = activeTab === 'meals' ? favoriteMeals : favoriteRestaurants
 
@@ -49,6 +82,16 @@ export default function Favorites() {
     <div className="flex flex-col h-full">
       {/* Tab Navigation */}
       <div className="px-4 py-4 border-b border-border">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-lg font-semibold">My Favorites</h1>
+          <button
+            onClick={handleRefresh}
+            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
         <div className="flex items-center bg-muted rounded-lg p-1">
           <button
             onClick={() => setActiveTab('meals')}
@@ -58,7 +101,7 @@ export default function Favorites() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Meals ({favoriteMeals.length})
+            Meals ({isLoading ? '...' : favoriteMeals.length})
           </button>
           <button
             onClick={() => setActiveTab('restaurants')}
@@ -68,14 +111,49 @@ export default function Favorites() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            Restaurants ({favoriteRestaurants.length})
+            Restaurants ({isLoading ? '...' : favoriteRestaurants.length})
           </button>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {!hasFavorites ? (
+        {error ? (
+          <motion.div
+            className="flex flex-col items-center justify-center h-full px-6 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <Heart className="w-8 h-8 text-red-500" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Error Loading Favorites</h3>
+            <p className="text-muted-foreground text-balance mb-4">
+              {error.message || 'Failed to load your favorites. Please try again.'}
+            </p>
+            <button
+              onClick={handleRefresh}
+              className="btn btn-primary btn-md"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Loading...' : 'Retry'}
+            </button>
+          </motion.div>
+        ) : isLoading ? (
+          <motion.div
+            className="flex flex-col items-center justify-center h-full px-6 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+              <RefreshCw className="w-8 h-8 text-muted-foreground animate-spin" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Loading Favorites</h3>
+            <p className="text-muted-foreground">
+              Getting your favorite {activeTab}...
+            </p>
+          </motion.div>
+        ) : !hasFavorites ? (
           <motion.div
             className="flex flex-col items-center justify-center h-full px-6 text-center"
             initial={{ opacity: 0, y: 20 }}

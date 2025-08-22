@@ -4,6 +4,9 @@ import mealRoutes from './meals';
 import restaurantRoutes from './restaurants';
 import tagRoutes from './tags';
 import randomRoutes from './random';
+import restaurantSearchRoutes from './restaurantSearch';
+import favoritesRoutes from './favorites';
+import userFavoritesRoutes from './userFavorites';
 import dbManager from '../database/connection';
 
 const router = Router();
@@ -101,7 +104,10 @@ router.get('/', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/meals', mealRoutes);
 router.use('/restaurants', restaurantRoutes);
+router.use('/restaurant-search', restaurantSearchRoutes);
 router.use('/tags', tagRoutes);
 router.use('/random', randomRoutes);
+router.use('/favorites', favoritesRoutes);
+router.use('/user-favorites', userFavoritesRoutes);
 
 export default router;

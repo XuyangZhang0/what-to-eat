@@ -61,6 +61,22 @@ export function restaurantsToSlotItems(restaurants: Restaurant[]): RestaurantSlo
 }
 
 /**
+ * Convert array of favorite meals to SlotItems
+ * Note: Backend already returns only favorites, so no filtering needed
+ */
+export function favoriteMealsToSlotItems(meals: Meal[]): MealSlotItem[] {
+  return meals.map(mealToSlotItem)
+}
+
+/**
+ * Convert array of favorite restaurants to SlotItems
+ * Note: Backend already returns only favorites, so no filtering needed
+ */
+export function favoriteRestaurantsToSlotItems(restaurants: Restaurant[]): RestaurantSlotItem[] {
+  return restaurants.map(restaurantToSlotItem)
+}
+
+/**
  * Get emoji for cuisine type
  */
 export function getCuisineEmoji(cuisine?: string): string {
@@ -118,7 +134,9 @@ export function getCuisineEmoji(cuisine?: string): string {
 /**
  * Get emoji for meal category
  */
-export function getMealCategoryEmoji(category: string): string {
+export function getMealCategoryEmoji(category?: string): string {
+  if (!category) return '🍽️'
+  
   const categoryEmojis: Record<string, string> = {
     'breakfast': '🌅',
     'lunch': '☀️',
@@ -131,98 +149,3 @@ export function getMealCategoryEmoji(category: string): string {
   return categoryEmojis[category.toLowerCase()] || '🍽️'
 }
 
-/**
- * Create sample slot items for testing
- */
-export function createSampleSlotItems(): SlotItem[] {
-  return [
-    {
-      id: '1',
-      name: 'Pizza Margherita',
-      description: 'Classic Italian pizza with tomato, mozzarella, and basil',
-      category: 'dinner',
-      type: 'meal',
-      cuisine: 'italian',
-      difficulty: 'easy',
-      cookingTime: 30,
-      emoji: '🍕',
-    },
-    {
-      id: '2',
-      name: 'Chicken Tikka Masala',
-      description: 'Creamy curry with tender chicken pieces',
-      category: 'dinner',
-      type: 'meal',
-      cuisine: 'indian',
-      difficulty: 'medium',
-      cookingTime: 45,
-      emoji: '🍛',
-    },
-    {
-      id: '3',
-      name: 'Sushi Rolls',
-      description: 'Fresh salmon and avocado rolls',
-      category: 'lunch',
-      type: 'meal',
-      cuisine: 'japanese',
-      difficulty: 'hard',
-      cookingTime: 60,
-      emoji: '🍣',
-    },
-    {
-      id: '4',
-      name: 'Caesar Salad',
-      description: 'Crisp romaine lettuce with parmesan and croutons',
-      category: 'lunch',
-      type: 'meal',
-      cuisine: 'american',
-      difficulty: 'easy',
-      cookingTime: 15,
-      emoji: '🥗',
-    },
-    {
-      id: '5',
-      name: 'Beef Tacos',
-      description: 'Seasoned ground beef with fresh toppings',
-      category: 'dinner',
-      type: 'meal',
-      cuisine: 'mexican',
-      difficulty: 'easy',
-      cookingTime: 25,
-      emoji: '🌮',
-    },
-    {
-      id: '6',
-      name: "Joe's Diner",
-      description: 'Classic American comfort food',
-      category: 'american',
-      type: 'restaurant',
-      cuisine: 'american',
-      rating: 4.2,
-      priceRange: '$$',
-      emoji: '🍔',
-    },
-    {
-      id: '7',
-      name: 'Sakura Sushi',
-      description: 'Fresh sushi and sashimi',
-      category: 'japanese',
-      type: 'restaurant',
-      cuisine: 'japanese',
-      rating: 4.7,
-      priceRange: '$$$',
-      emoji: '🍣',
-    },
-    {
-      id: '8',
-      name: 'Pasta Palace',
-      description: 'Authentic Italian pasta dishes',
-      category: 'italian',
-      type: 'restaurant',
-      cuisine: 'italian',
-      rating: 4.5,
-      priceRange: '$$',
-      emoji: '🍝',
-    },
-  ]
-}

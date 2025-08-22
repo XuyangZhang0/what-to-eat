@@ -29,6 +29,13 @@ export default function ShakeSettingsComponent({
   const [calibrationData, setCalibrationData] = useState<number[]>([])
   const [testShakeCount, setTestShakeCount] = useState(0)
 
+  const onShakeDetected = useCallback(() => {
+    if (isCalibrating) {
+      // currentIntensity will be available from the hook's context
+      setTestShakeCount(prev => prev + 1)
+    }
+  }, [isCalibrating])
+
   // Use shake detection for testing with current settings
   const {
     isShaking,
@@ -44,12 +51,7 @@ export default function ShakeSettingsComponent({
     cooldownPeriod: settings.cooldownPeriod,
     enabled: settings.isEnabled,
     hapticFeedback: settings.hapticFeedback,
-    onShakeDetected: useCallback(() => {
-      if (isCalibrating) {
-        setCalibrationData(prev => [...prev, currentIntensity])
-        setTestShakeCount(prev => prev + 1)
-      }
-    }, [isCalibrating, currentIntensity])
+    onShakeDetected
   })
 
   const handleToggle = (key: keyof ShakeSettings, value: boolean) => {

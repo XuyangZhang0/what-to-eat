@@ -50,7 +50,7 @@ export function useAutoSave<T>({
         hasErrors: true,
       }))
     }
-  }, [data, onSave, enabled, isValid, isDirty])
+  }, [onSave, enabled, isValid, isDirty])
 
   useEffect(() => {
     if (!enabled) return
@@ -67,7 +67,9 @@ export function useAutoSave<T>({
       }
 
       // Set new timeout for auto-save
-      saveTimeoutRef.current = setTimeout(triggerAutoSave, delay)
+      saveTimeoutRef.current = setTimeout(() => {
+        triggerAutoSave()
+      }, delay)
     }
 
     return () => {
@@ -75,7 +77,7 @@ export function useAutoSave<T>({
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [data, isDirty, isValid, enabled, delay, triggerAutoSave])
+  }, [data, isDirty, isValid, enabled, delay])
 
   const saveImmediately = useCallback(async () => {
     if (saveTimeoutRef.current) {

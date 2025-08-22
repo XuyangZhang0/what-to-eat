@@ -3,6 +3,7 @@ import { MealModel } from '@/models/Meal.js';
 import { RandomSelectionService } from '@/services/randomSelectionService.js';
 import { asyncHandler } from '@/middleware/errorHandler.js';
 import { SearchFilters, PaginationOptions } from '@/models/types.js';
+import { db } from '@/database/connection.js';
 
 export class MealsController {
   // Get all meals for user with filtering and pagination
@@ -59,6 +60,83 @@ export class MealsController {
     });
   });
 
+  // Discover public meals from all users
+  static discoverMeals = asyncHandler(async (req: Request, res: Response) => {
+    const {
+      search,
+      cuisine_type,
+      difficulty_level,
+      prep_time_max,
+      tag_ids,
+      page = 1,
+      limit = 20,
+      sort_by = 'created_at',
+      sort_order = 'desc'
+    } = req.query;
+
+    const filters: SearchFilters = {};
+    if (search) filters.search = search as string;
+    if (cuisine_type) filters.cuisine_type = cuisine_type as string;
+    if (difficulty_level) filters.difficulty_level = difficulty_level as any;
+    if (prep_time_max) filters.prep_time_max = Number(prep_time_max);
+    if (tag_ids && Array.isArray(tag_ids)) filters.tag_ids = tag_ids as unknown as number[];
+
+    const pagination: PaginationOptions = {
+      page: Number(page),
+      limit: Number(limit),
+      sort_by: sort_by as string,
+      sort_order: sort_order as 'asc' | 'desc'
+    };
+
+    const { meals, total } = MealModel.findAllPublic(filters, pagination);
+    
+    // If user is authenticated, check their favorite status for each meal
+    let mealsWithFavoriteStatus = meals;
+    if (req.user) {
+      const userId = req.user.user_id;
+      
+      // Get user's favorites for the current set of meals from user_favorites table (cross-user favorites)
+      const mealIds = meals.map(meal => meal.id);
+      let favoriteMealIds: number[] = [];
+      
+      if (mealIds.length > 0) {
+        const placeholders = mealIds.map(() => '?').join(',');
+        const favoritesStmt = db.prepare(`
+          SELECT item_id 
+          FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'meal' AND item_id IN (${placeholders})
+        `);
+        favoriteMealIds = favoritesStmt.all(userId, ...mealIds).map((row: any) => row.item_id);
+      }
+      
+      // Add isFavorite property to each meal
+      // For own meals: use is_favorite field, for other user's meals: use user_favorites table
+      mealsWithFavoriteStatus = meals.map(meal => ({
+        ...meal,
+        isFavorite: meal.user_id === userId ? meal.is_favorite : favoriteMealIds.includes(meal.id)
+      }));
+    } else {
+      // For unauthenticated users, set all favorites to false
+      mealsWithFavoriteStatus = meals.map(meal => ({
+        ...meal,
+        isFavorite: false
+      }));
+    }
+
+    const totalPages = Math.ceil(total / Number(limit));
+
+    res.json({
+      success: true,
+      data: mealsWithFavoriteStatus,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        total_pages: totalPages
+      }
+    });
+  });
+
   // Get single meal by ID
   static getMeal = asyncHandler(async (req: Request, res: Response) => {
     if (!req.user) {
@@ -78,17 +156,70 @@ export class MealsController {
       });
     }
 
-    // Check if meal belongs to user
-    if (meal.user_id !== req.user.user_id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
-      });
+    // Allow viewing any meal - users can view details of discovered meals from other users
+    // Access control is only needed for modification endpoints (update, delete, toggle favorite)
+    
+    // Add favorite status for the requesting user
+    let mealWithFavoriteStatus: any = { ...meal };
+    
+    // If it's the user's own meal, use the meal's is_favorite field
+    if (meal.user_id === req.user.user_id) {
+      mealWithFavoriteStatus.isFavorite = meal.is_favorite;
+    } else {
+      // If it's another user's meal, check user_favorites table for cross-user favorites
+      const favoriteStmt = db.prepare(`
+        SELECT 1 FROM user_favorites 
+        WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+      `);
+      const isFavorite = favoriteStmt.get(req.user.user_id, mealId);
+      mealWithFavoriteStatus.isFavorite = !!isFavorite;
     }
 
     res.json({
       success: true,
-      data: meal
+      data: mealWithFavoriteStatus
+    });
+  });
+
+  // Public meal viewing endpoint - allows viewing any meal with optional authentication
+  static viewMeal = asyncHandler(async (req: Request, res: Response) => {
+    const mealId = Number(req.params.id);
+    const meal = MealModel.findById(mealId);
+
+    if (!meal) {
+      return res.status(404).json({
+        success: false,
+        error: 'Meal not found'
+      });
+    }
+
+    // Add favorite status based on authentication
+    let mealWithFavoriteStatus = { ...meal };
+
+    if (req.user) {
+      // User is authenticated, check favorite status
+      const userId = req.user.user_id;
+      
+      if (meal.user_id === userId) {
+        // User's own meal, use the meal's is_favorite field
+        (mealWithFavoriteStatus as any).isFavorite = Boolean(meal.is_favorite);
+      } else {
+        // Other user's meal, check user_favorites table
+        const favoriteStmt = db.prepare(`
+          SELECT 1 FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+        `);
+        const isFavorite = favoriteStmt.get(userId, mealId);
+        (mealWithFavoriteStatus as any).isFavorite = !!isFavorite;
+      }
+    } else {
+      // Not authenticated, set favorite as false
+      (mealWithFavoriteStatus as any).isFavorite = false;
+    }
+
+    res.json({
+      success: true,
+      data: mealWithFavoriteStatus
     });
   });
 
@@ -337,6 +468,7 @@ export class MealsController {
     }
 
     const mealId = Number(req.params.id);
+    const userId = req.user.user_id;
     const existingMeal = MealModel.findById(mealId);
 
     if (!existingMeal) {
@@ -346,123 +478,47 @@ export class MealsController {
       });
     }
 
-    // Check if meal belongs to user
-    if (existingMeal.user_id !== req.user.user_id) {
-      return res.status(403).json({
-        success: false,
-        error: 'Access denied'
+    let isFavorite: boolean;
+
+    // Handle favorites based on meal ownership
+    if (existingMeal.user_id === userId) {
+      // For own meals, update the meal's is_favorite field
+      const newFavoriteStatus = !existingMeal.is_favorite;
+      MealModel.update(mealId, {
+        is_favorite: newFavoriteStatus
       });
+      isFavorite = newFavoriteStatus;
+    } else {
+      // For other users' meals, use the user_favorites table
+      const favoriteCheckStmt = db.prepare(`
+        SELECT 1 FROM user_favorites 
+        WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+      `);
+      const currentlyFavorite = favoriteCheckStmt.get(userId, mealId);
+
+      if (currentlyFavorite) {
+        // Remove from favorites
+        const deleteStmt = db.prepare(`
+          DELETE FROM user_favorites 
+          WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
+        `);
+        deleteStmt.run(userId, mealId);
+        isFavorite = false;
+      } else {
+        // Add to favorites
+        const insertStmt = db.prepare(`
+          INSERT INTO user_favorites (user_id, item_type, item_id, created_at)
+          VALUES (?, 'meal', ?, datetime('now'))
+        `);
+        insertStmt.run(userId, mealId);
+        isFavorite = true;
+      }
     }
 
-    const updatedMeal = MealModel.update(mealId, {
-      is_favorite: !existingMeal.is_favorite
-    });
-
     res.json({
       success: true,
-      data: updatedMeal,
-      message: `Meal ${updatedMeal?.is_favorite ? 'added to' : 'removed from'} favorites`
-    });
-  });
-
-  // Demo endpoints for slot machine (no authentication required)
-  static getDemoMeals = asyncHandler(async (req: Request, res: Response) => {
-    const demoMeals = [
-      {
-        id: 'demo-1',
-        name: 'Spaghetti Carbonara',
-        category: 'dinner',
-        cuisine: 'Italian',
-        description: 'Classic Italian pasta dish with eggs, cheese, and pancetta',
-        difficulty: 'medium',
-        cookingTime: 30,
-        ingredients: ['Spaghetti', 'Eggs', 'Parmesan', 'Pancetta', 'Black pepper'],
-        instructions: ['Cook pasta', 'Prepare sauce', 'Combine'],
-        isFavorite: false,
-        rating: 4.5
-      },
-      {
-        id: 'demo-2',
-        name: 'Chicken Teriyaki',
-        category: 'lunch',
-        cuisine: 'Japanese',
-        description: 'Tender chicken glazed with sweet teriyaki sauce',
-        difficulty: 'easy',
-        cookingTime: 25,
-        ingredients: ['Chicken', 'Soy sauce', 'Mirin', 'Sugar', 'Ginger'],
-        instructions: ['Marinate chicken', 'Cook', 'Glaze with sauce'],
-        isFavorite: true,
-        rating: 4.2
-      },
-      {
-        id: 'demo-3',
-        name: 'Beef Tacos',
-        category: 'dinner',
-        cuisine: 'Mexican',
-        description: 'Spicy ground beef tacos with fresh toppings',
-        difficulty: 'easy',
-        cookingTime: 20,
-        ingredients: ['Ground beef', 'Taco shells', 'Lettuce', 'Tomatoes', 'Cheese'],
-        instructions: ['Cook beef', 'Warm shells', 'Assemble tacos'],
-        isFavorite: false,
-        rating: 4.0
-      }
-    ];
-
-    res.json({
-      success: true,
-      data: demoMeals
-    });
-  });
-
-  static getRandomDemoMeal = asyncHandler(async (req: Request, res: Response) => {
-    const demoMeals = [
-      {
-        id: 'demo-1',
-        name: 'Spaghetti Carbonara',
-        category: 'dinner',
-        cuisine: 'Italian',
-        description: 'Classic Italian pasta dish with eggs, cheese, and pancetta',
-        difficulty: 'medium',
-        cookingTime: 30,
-        ingredients: ['Spaghetti', 'Eggs', 'Parmesan', 'Pancetta', 'Black pepper'],
-        instructions: ['Cook pasta', 'Prepare sauce', 'Combine'],
-        isFavorite: false,
-        rating: 4.5
-      },
-      {
-        id: 'demo-2',
-        name: 'Chicken Teriyaki',
-        category: 'lunch',
-        cuisine: 'Japanese',
-        description: 'Tender chicken glazed with sweet teriyaki sauce',
-        difficulty: 'easy',
-        cookingTime: 25,
-        ingredients: ['Chicken', 'Soy sauce', 'Mirin', 'Sugar', 'Ginger'],
-        instructions: ['Marinate chicken', 'Cook', 'Glaze with sauce'],
-        isFavorite: true,
-        rating: 4.2
-      },
-      {
-        id: 'demo-3',
-        name: 'Beef Tacos',
-        category: 'dinner',
-        cuisine: 'Mexican',
-        description: 'Spicy ground beef tacos with fresh toppings',
-        difficulty: 'easy',
-        cookingTime: 20,
-        ingredients: ['Ground beef', 'Taco shells', 'Lettuce', 'Tomatoes', 'Cheese'],
-        instructions: ['Cook beef', 'Warm shells', 'Assemble tacos'],
-        isFavorite: false,
-        rating: 4.0
-      }
-    ];
-
-    const randomMeal = demoMeals[Math.floor(Math.random() * demoMeals.length)];
-
-    res.json({
-      success: true,
-      data: randomMeal
+      data: { isFavorite },
+      message: `Meal ${isFavorite ? 'added to' : 'removed from'} favorites`
     });
   });
 }

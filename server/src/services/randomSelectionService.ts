@@ -9,8 +9,43 @@ import {
   RandomSuggestion,
   SearchFilters 
 } from '@/models/types.js';
+import { isRestaurantOpenOnDay, getCurrentDay } from '@/utils/openingHours.js';
 
 export class RandomSelectionService {
+  // Get multiple random suggestions based on user preferences
+  static async getMultipleRandomSuggestions(
+    userId: number,
+    options: RandomSelectionOptions = {}
+  ): Promise<RandomSuggestion[]> {
+    const userPreferences = UserModel.getPreferences(userId);
+    
+    // Meal suggestions are configurable 1-3, restaurant suggestions are always 1
+    const mealSuggestionCount = userPreferences.meal_suggestion_count || userPreferences.suggestion_count || 1;
+    const restaurantSuggestionCount = 1; // Fixed count for restaurants
+    
+    const validMealCount = Math.min(Math.max(mealSuggestionCount, 1), 3); // Ensure between 1-3
+    
+    const suggestions: RandomSuggestion[] = [];
+    
+    // Generate meal suggestions
+    for (let i = 0; i < validMealCount; i++) {
+      const meal = await this.getRandomMeal(userId, options.exclude_recent_days, options.weight_favorites, options.filters);
+      if (meal) {
+        suggestions.push({ meal, type: 'meal' });
+      }
+    }
+    
+    // Generate restaurant suggestion (always 1)
+    for (let i = 0; i < restaurantSuggestionCount; i++) {
+      const restaurant = await this.getRandomRestaurant(userId, options.exclude_recent_days, options.weight_favorites, options.filters);
+      if (restaurant) {
+        suggestions.push({ restaurant, type: 'restaurant' });
+      }
+    }
+    
+    return suggestions;
+  }
+
   // Get a random suggestion (meal or restaurant)
   static async getRandomSuggestion(
     userId: number, 
@@ -85,14 +120,32 @@ export class RandomSelectionService {
     const { restaurants } = RestaurantModel.findByUserId(userId, filters, { limit: 1000 });
     
     // Filter out recently selected restaurants
-    const eligibleRestaurants = restaurants.filter(restaurant => !recentRestaurantIds.includes(restaurant.id));
+    let eligibleRestaurants = restaurants.filter(restaurant => !recentRestaurantIds.includes(restaurant.id));
     
-    if (eligibleRestaurants.length === 0) {
-      // If no eligible restaurants, fall back to all restaurants (ignore recent filter)
+    // Filter out restaurants that are closed today
+    const currentDay = getCurrentDay();
+    const openRestaurants = eligibleRestaurants.filter(restaurant => 
+      isRestaurantOpenOnDay(restaurant.opening_hours, currentDay)
+    );
+    
+    // If we have open restaurants, use them; otherwise fall back to all eligible restaurants
+    const finalEligibleRestaurants = openRestaurants.length > 0 ? openRestaurants : eligibleRestaurants;
+    
+    if (finalEligibleRestaurants.length === 0) {
+      // If no eligible restaurants, fall back to all restaurants but still respect opening hours
+      const allOpenRestaurants = restaurants.filter(restaurant => 
+        isRestaurantOpenOnDay(restaurant.opening_hours, currentDay)
+      );
+      
+      if (allOpenRestaurants.length > 0) {
+        return this.weightedRandomSelection(allOpenRestaurants, weightFavorites);
+      }
+      
+      // Last resort: ignore opening hours entirely
       return restaurants.length > 0 ? this.weightedRandomSelection(restaurants, weightFavorites) : null;
     }
     
-    return this.weightedRandomSelection(eligibleRestaurants, weightFavorites);
+    return this.weightedRandomSelection(finalEligibleRestaurants, weightFavorites);
   }
 
   // Weighted random selection algorithm

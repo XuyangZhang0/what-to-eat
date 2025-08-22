@@ -66,7 +66,7 @@ export default function ShakeButton({
         ) : (
           <>
             <Smartphone className="w-8 h-8 mb-2" />
-            <span className="text-sm font-medium">Shake</span>
+            <span className="text-xs font-medium">Shake or Tap</span>
           </>
         )}
       </div>

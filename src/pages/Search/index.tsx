@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Search as SearchIcon, Filter, X } from 'lucide-react'
 import SearchFilters from './SearchFilters'
 import SearchResults from './SearchResults'
 import { SearchFilter, SearchMode, Meal, Restaurant } from '@/types'
-import { search, getRandomSuggestion } from '@/services/api'
+import { search, getRandomSuggestion, mealsApi, restaurantsApi } from '@/services/api'
 import { useToast } from '@/hooks/useToast'
 
 export default function Search() {
@@ -19,6 +19,68 @@ export default function Search() {
   const [results, setResults] = useState<(Meal | Restaurant)[]>([])
   const [hasSearched, setHasSearched] = useState(false)
 
+  // Load discovered items automatically on page load
+  const loadDiscoveredItems = useCallback(async () => {
+    setIsSearching(true)
+    setHasSearched(true)
+    
+    try {
+      let discoveredResults: (Meal | Restaurant)[]
+      
+      if (mode === 'meals') {
+        discoveredResults = await mealsApi.discoverMeals(filters)
+      } else {
+        discoveredResults = await restaurantsApi.discoverRestaurants(filters)
+      }
+      
+      setResults(discoveredResults)
+      
+      if (discoveredResults.length === 0) {
+        toast({
+          type: 'warning',
+          message: `No ${mode} found. Try adjusting your filters.`,
+          duration: 3000
+        })
+      }
+    } catch (error) {
+      console.error('Failed to load discovered items:', error)
+      toast({
+        type: 'error',
+        message: 'Failed to load items. Please try again.',
+        duration: 4000
+      })
+      setResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [mode, filters, toast])
+
+  const handleRandomSearch = useCallback(async () => {
+    setIsSearching(true)
+    setHasSearched(true)
+    
+    try {
+      const randomResult = await getRandomSuggestion(mode, filters)
+      setResults([randomResult])
+      
+      toast({
+        type: 'success',
+        message: `Found a random ${mode.slice(0, -1)} for you!`,
+        duration: 3000
+      })
+    } catch (error) {
+      console.error('Random search failed:', error)
+      toast({
+        type: 'error',
+        message: 'Could not find a random suggestion. Please try again.',
+        duration: 4000
+      })
+      setResults([])
+    } finally {
+      setIsSearching(false)
+    }
+  }, [mode, filters, toast])
+
   useEffect(() => {
     // Handle URL parameters
     const category = searchParams.get('category')
@@ -26,14 +88,24 @@ export default function Search() {
     
     if (category) {
       setFilters(prev => ({ ...prev, category: category as any }))
-      setIsSearching(true)
+      return
     }
     
     if (random) {
-      // Handle random search
-      setIsSearching(true)
+      handleRandomSearch()
+      return
     }
-  }, [searchParams])
+    
+    // Auto-load discovered items when page loads
+    loadDiscoveredItems()
+  }, [searchParams, mode, loadDiscoveredItems, handleRandomSearch])
+
+  // Reload discovered items when filters change  
+  useEffect(() => {
+    if (hasSearched && !query.trim()) {
+      loadDiscoveredItems()
+    }
+  }, [filters, hasSearched, query, loadDiscoveredItems])
 
   const handleSearch = async () => {
     if (!query.trim() && Object.keys(filters).length === 0) return
@@ -80,37 +152,20 @@ export default function Search() {
     }
   }
 
-  const handleRandomSearch = async () => {
-    setIsSearching(true)
-    setHasSearched(true)
-    
-    try {
-      const randomResult = await getRandomSuggestion(mode, filters)
-      setResults([randomResult])
-      
-      toast({
-        type: 'success',
-        message: `Found a random ${mode.slice(0, -1)} for you!`,
-        duration: 3000
-      })
-    } catch (error) {
-      console.error('Random search failed:', error)
-      toast({
-        type: 'error',
-        message: 'Could not find a random suggestion. Please try again.',
-        duration: 4000
-      })
-      setResults([])
-    } finally {
-      setIsSearching(false)
-    }
-  }
 
   const handleFilterChange = (newFilters: SearchFilter) => {
     setFilters(newFilters)
     if (Object.keys(newFilters).length > 0) {
       handleSearch()
     }
+  }
+
+  const handleItemUpdate = (updatedItem: Meal | Restaurant) => {
+    setResults(prevResults => 
+      prevResults.map(item => 
+        item.id === updatedItem.id ? updatedItem : item
+      )
+    )
   }
 
   return (
@@ -205,9 +260,10 @@ export default function Search() {
           mode={mode}
           filters={filters}
           isSearching={isSearching}
-          results={results}
+          items={results}
           hasSearched={hasSearched}
           onRandomSearch={handleRandomSearch}
+          onItemUpdate={handleItemUpdate}
         />
       </div>
     </div>

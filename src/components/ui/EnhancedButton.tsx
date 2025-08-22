@@ -37,7 +37,7 @@ const rippleVariants: Variants = {
   },
 }
 
-export function EnhancedButton({
+export const EnhancedButton = ({
   variant = 'primary',
   size = 'md',
   isLoading = false,
@@ -51,7 +51,7 @@ export function EnhancedButton({
   disabled,
   onClick,
   ...props
-}: EnhancedButtonProps) {
+}: EnhancedButtonProps) => {
   const [rippleCoords, setRippleCoords] = React.useState<{ x: number; y: number } | null>(null)
 
   const baseClasses = cn(
@@ -181,6 +181,3 @@ export const GhostButton = (props: Omit<EnhancedButtonProps, 'variant'>) => (
 export const DangerButton = (props: Omit<EnhancedButtonProps, 'variant'>) => (
   <EnhancedButton variant="danger" {...props} />
 )
-
-// Default export
-export default EnhancedButton

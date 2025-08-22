@@ -4,7 +4,7 @@ import { Home, Search, Heart, Settings, Database } from 'lucide-react'
 
 const navigationItems = [
   { path: '/', icon: Home, label: 'Home' },
-  { path: '/search', icon: Search, label: 'Search' },
+  { path: '/search', icon: Search, label: 'Discover' },
   { path: '/favorites', icon: Heart, label: 'Favorites' },
   { path: '/management', icon: Database, label: 'Manage' },
   { path: '/settings', icon: Settings, label: 'Settings' },

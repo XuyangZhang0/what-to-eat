@@ -9,6 +9,9 @@ import { useToast } from '@/hooks/useToast'
 import { CreateRestaurantData, UpdateRestaurantData } from '@/types/api'
 import { Restaurant } from '@/types'
 import { restaurantsApi } from '@/services/api'
+import RestaurantAutocomplete from '@/components/RestaurantAutocomplete'
+import InternetRestaurantSearch from '@/components/InternetRestaurantSearch'
+import OpeningHoursEditor from '@/components/OpeningHoursEditor'
 
 interface RestaurantFormProps {
   restaurant?: Restaurant;
@@ -54,12 +57,13 @@ export default function RestaurantForm({
   onSave,
   onCancel,
   isLoading = false,
-  autoSave = true,
+  autoSave = false,
 }: RestaurantFormProps) {
   const { user } = useAuth()
   const { toast } = useToast()
   const [cuisineOptions, setCuisineOptions] = useState<string[]>([])
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [openingHours, setOpeningHours] = useState(restaurant?.openingHours)
 
   const initialData = {
     name: restaurant?.name || '',
@@ -68,7 +72,7 @@ export default function RestaurantForm({
     phone: restaurant?.phone || '',
     rating: restaurant?.rating || undefined,
     price_range: restaurant?.priceRange || undefined,
-    is_favorite: restaurant?.isFavorite || false,
+    is_favorite: restaurant?.isFavorite ?? true,
   }
 
   const {
@@ -129,6 +133,7 @@ export default function RestaurantForm({
       rating: formData.rating,
       price_range: formData.price_range,
       is_favorite: formData.is_favorite,
+      opening_hours: openingHours,
     }
 
     if (restaurant) {
@@ -150,6 +155,67 @@ export default function RestaurantForm({
     isValid,
     enabled: autoSave,
   })
+
+  // Handle restaurant selection from local autocomplete
+  const handleRestaurantSelect = useCallback((selectedRestaurant: Restaurant) => {
+    // Auto-populate form fields based on selected restaurant
+    updateField('name', selectedRestaurant.name)
+    if (selectedRestaurant.cuisine) updateField('cuisine_type', selectedRestaurant.cuisine)
+    if (selectedRestaurant.address) updateField('address', selectedRestaurant.address)
+    if (selectedRestaurant.phone) updateField('phone', selectedRestaurant.phone)
+    if (selectedRestaurant.rating) updateField('rating', selectedRestaurant.rating)
+    if (selectedRestaurant.priceRange) updateField('price_range', selectedRestaurant.priceRange)
+    if (selectedRestaurant.isFavorite !== undefined) updateField('is_favorite', selectedRestaurant.isFavorite)
+    if (selectedRestaurant.openingHours) setOpeningHours(selectedRestaurant.openingHours)
+    
+    toast({
+      type: 'success',
+      message: 'Restaurant details auto-filled from your saved restaurants!',
+      duration: 2000
+    })
+  }, [updateField, toast])
+
+  // Handle restaurant selection from internet search
+  const handleInternetRestaurantSelect = useCallback((selectedRestaurant: any) => {
+    console.log('RestaurantForm: Selected restaurant data:', selectedRestaurant)
+    console.log('RestaurantForm: Opening hours from selection:', selectedRestaurant.opening_hours)
+    
+    // Auto-populate form fields based on internet search result
+    updateField('name', selectedRestaurant.name)
+    if (selectedRestaurant.address) updateField('address', selectedRestaurant.address)
+    if (selectedRestaurant.phone) updateField('phone', selectedRestaurant.phone)
+    if (selectedRestaurant.rating) updateField('rating', selectedRestaurant.rating)
+    if (selectedRestaurant.price_range) updateField('price_range', selectedRestaurant.price_range)
+    if (selectedRestaurant.opening_hours) {
+      console.log('RestaurantForm: Setting opening hours:', selectedRestaurant.opening_hours)
+      setOpeningHours(selectedRestaurant.opening_hours)
+    } else {
+      console.log('RestaurantForm: No opening hours in selected restaurant data')
+      // Clear opening hours since this restaurant doesn't have them available
+      setOpeningHours(undefined)
+    }
+    
+    // Try to determine cuisine from restaurant types
+    if (selectedRestaurant.types && Array.isArray(selectedRestaurant.types)) {
+      const cuisineTypes = ['italian', 'chinese', 'mexican', 'indian', 'thai', 'japanese', 'french', 'american']
+      const detectedCuisine = selectedRestaurant.types.find((type: string) => 
+        cuisineTypes.some(cuisine => type.toLowerCase().includes(cuisine))
+      )
+      if (detectedCuisine) {
+        updateField('cuisine_type', detectedCuisine.charAt(0).toUpperCase() + detectedCuisine.slice(1))
+      }
+    }
+    
+    // Show appropriate toast message based on what data was found
+    const hasOpeningHours = !!selectedRestaurant.opening_hours
+    toast({
+      type: 'success',
+      message: hasOpeningHours 
+        ? 'Restaurant details auto-filled from internet search!' 
+        : 'Restaurant details auto-filled! Opening hours not available - please add manually.',
+      duration: hasOpeningHours ? 3000 : 4000
+    })
+  }, [updateField, toast])
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
@@ -183,6 +249,7 @@ export default function RestaurantForm({
         rating: data.rating,
         price_range: data.price_range,
         is_favorite: data.is_favorite,
+        opening_hours: openingHours,
       }
 
       if (restaurant) {
@@ -271,30 +338,33 @@ export default function RestaurantForm({
 
         {/* Basic Information */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Name */}
+          {/* Name with Internet Search */}
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Restaurant Name *
             </label>
-            <input
-              type="text"
+            <InternetRestaurantSearch
               value={data.name}
-              onChange={(e) => updateField('name', e.target.value)}
+              onChange={(value) => updateField('name', value)}
+              onSelect={handleInternetRestaurantSelect}
+              placeholder="Search restaurants worldwide..."
               className={cn(
-                'w-full px-4 py-3 rounded-lg border focus:ring-2 focus:ring-primary-500 focus:border-transparent',
-                'bg-white dark:bg-gray-700 text-gray-900 dark:text-white',
-                errors.name && touched.name
-                  ? 'border-red-500 focus:ring-red-500'
-                  : 'border-gray-300 dark:border-gray-600'
+                errors.name && touched.name && 'ring-2 ring-red-500'
               )}
-              placeholder="Enter restaurant name"
-              required
-              aria-invalid={!!(errors.name && touched.name)}
-              aria-describedby={errors.name && touched.name ? "name-error" : undefined}
+              disabled={isLoading}
+              showSavedResults={true}
             />
             {errors.name && touched.name && (
               <p id="name-error" className="mt-1 text-sm text-red-500" role="alert">{errors.name}</p>
             )}
+            <div className="mt-1 space-y-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                🌍 Search restaurants worldwide or from your saved restaurants
+              </p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Select a result to auto-fill address, hours, rating, and more
+              </p>
+            </div>
           </div>
 
           {/* Cuisine */}
@@ -478,6 +548,12 @@ export default function RestaurantForm({
             />
           </button>
         </div>
+
+        {/* Opening Hours */}
+        <OpeningHoursEditor
+          openingHours={openingHours}
+          onChange={setOpeningHours}
+        />
 
         {/* Error Display */}
         {submitError && (

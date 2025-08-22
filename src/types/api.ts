@@ -1,5 +1,5 @@
 // API-specific types for CRUD operations
-import { Meal, Restaurant, MealCategory } from './index'
+import { Meal, Restaurant, WeeklyOpeningHours } from './index'
 
 // Meal CRUD types
 export interface CreateMealData {
@@ -33,6 +33,7 @@ export interface CreateRestaurantData {
   price_range?: '$' | '$$' | '$$$' | '$$$$';
   is_favorite?: boolean;
   rating?: number;
+  opening_hours?: WeeklyOpeningHours;
   tag_ids?: number[];
 }
 
@@ -44,6 +45,7 @@ export interface UpdateRestaurantData {
   price_range?: '$' | '$$' | '$$$' | '$$$$';
   is_favorite?: boolean;
   rating?: number;
+  opening_hours?: WeeklyOpeningHours;
   tag_ids?: number[];
 }
 

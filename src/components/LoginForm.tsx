@@ -5,9 +5,10 @@ import { useAuth } from '@/hooks/useAuth'
 
 interface LoginFormProps {
   onSuccess?: () => void
+  onSwitchToRegister?: () => void
 }
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
   const { login, isLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -110,11 +111,21 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center space-y-3">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            For testing, try registering a new account or contact admin for credentials
+            Don't have an account?{' '}
+            <button
+              type="button"
+              onClick={onSwitchToRegister}
+              className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
+            >
+              Create account
+            </button>
           </p>
-          <div className="mt-2">
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">
+              For testing, use demo credentials:
+            </p>
             <button
               type="button"
               onClick={() => {
