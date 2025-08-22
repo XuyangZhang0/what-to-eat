@@ -6,6 +6,7 @@ import { SearchFilter, SearchMode, Meal, Restaurant } from '@/types'
 import { userFavoritesApi } from '@/services/api'
 import { useToast } from '@/hooks/useToast'
 import { useAuth } from '@/hooks/useAuth'
+import { getFavoriteStatus, updateFavoriteStatus } from '@/utils/favorites'
 
 interface SearchResultsProps {
   query: string
@@ -104,8 +105,11 @@ export default function SearchResults({ query, mode, filters, isSearching, items
       
       setUpdatingFavorites(prev => new Set(prev).add(item.id))
       
-      const newFavoriteStatus = !item.isFavorite
-      console.log('Toggling favorite for:', item.name, 'to:', newFavoriteStatus)
+      // Get current favorite status using utility function
+      const currentFavoriteStatus = getFavoriteStatus(item)
+      const newFavoriteStatus = !currentFavoriteStatus
+      
+      console.log('Toggling favorite for:', item.name, 'from:', currentFavoriteStatus, 'to:', newFavoriteStatus)
       
       // Use the user favorites API for cross-user favoriting
       let result
@@ -115,13 +119,11 @@ export default function SearchResults({ query, mode, filters, isSearching, items
         result = await userFavoritesApi.toggleRestaurantFavorite(item.id)
       }
       
+      console.log('API response:', result)
       console.log('Successfully updated favorite status to:', result.is_favorite)
       
-      // Create updated item without mutating the original
-      const updatedItem = {
-        ...item,
-        isFavorite: result.is_favorite
-      }
+      // Create updated item with both formats for compatibility
+      const updatedItem = updateFavoriteStatus(item, result.is_favorite)
       
       // Notify parent component about the update
       if (onItemUpdate) {
@@ -147,12 +149,22 @@ export default function SearchResults({ query, mode, filters, isSearching, items
       
     } catch (error) {
       console.error('Failed to toggle favorite:', error)
+      console.error('Error details:', {
+        itemId: item.id,
+        itemName: item.name,
+        mode,
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error
+      })
       
       // Show error toast with specific error message
       const errorMessage = error instanceof Error ? error.message : 'Failed to update favorite status'
       toast({
         type: 'error',
-        message: errorMessage,
+        message: `Failed to favorite ${item.name}: ${errorMessage}`,
         duration: 4000
       })
     } finally {
@@ -303,7 +315,7 @@ export default function SearchResults({ query, mode, filters, isSearching, items
                       ) : (
                         <Heart 
                           className={`w-4 h-4 ${
-                            item.isFavorite 
+                            getFavoriteStatus(item)
                               ? 'fill-red-500 text-red-500' 
                               : isAuthenticated
                                 ? 'text-muted-foreground hover:text-red-500'

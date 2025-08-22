@@ -1,6 +1,7 @@
 import { Meal, Restaurant, SearchFilter, SearchMode } from '@/types'
 import { CreateMealData, UpdateMealData, CreateRestaurantData, UpdateRestaurantData, Tag, CreateTagData, UpdateTagData, PaginatedResponse } from '@/types/api'
 import { withNetworkRetry } from '@/hooks/useNetwork'
+import { normalizeRestaurant, normalizeMeal } from '@/utils/favorites'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.0.6.165:3002/api'
 
@@ -163,7 +164,10 @@ export const mealsApi = {
     if (filters?.maxCookingTime) params.append('prep_time_max', filters.maxCookingTime.toString())
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Meal[]>(`/meals/discover${query}`)
+    const meals = await fetchApi<any[]>(`/meals/discover${query}`)
+    
+    // Normalize meal data to ensure consistent format
+    return meals.map(meal => normalizeMeal(meal))
   },
 }
 
@@ -182,17 +186,20 @@ export const restaurantsApi = {
     }
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Restaurant[]>(`/restaurants${query}`)
+    const restaurants = await fetchApi<any[]>(`/restaurants${query}`)
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
   },
 
   // Get a specific restaurant by ID
   async getRestaurant(id: string): Promise<Restaurant> {
-    return fetchApi<Restaurant>(`/restaurants/${id}`)
+    const restaurant = await fetchApi<any>(`/restaurants/${id}`)
+    return normalizeRestaurant(restaurant)
   },
 
   // View any restaurant by ID (public access with optional authentication)
   async viewRestaurant(id: string): Promise<Restaurant> {
-    return fetchApi<Restaurant>(`/restaurants/view/${id}`)
+    const restaurant = await fetchApi<any>(`/restaurants/view/${id}`)
+    return normalizeRestaurant(restaurant)
   },
 
   // Search restaurants by query
@@ -209,7 +216,8 @@ export const restaurantsApi = {
       params.append('lng', location.lng.toString())
     }
     
-    return fetchApi<Restaurant[]>(`/restaurants/search?${params.toString()}`)
+    const restaurants = await fetchApi<any[]>(`/restaurants/search?${params.toString()}`)
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
   },
 
   // Get random restaurant
@@ -226,7 +234,8 @@ export const restaurantsApi = {
     }
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Restaurant>(`/restaurants/random${query}`)
+    const restaurant = await fetchApi<any>(`/restaurants/random${query}`)
+    return normalizeRestaurant(restaurant)
   },
 
   // Create new restaurant
@@ -323,7 +332,10 @@ export const restaurantsApi = {
     }
     
     const query = params.toString() ? `?${params.toString()}` : ''
-    return fetchApi<Restaurant[]>(`/restaurants/discover${query}`)
+    const restaurants = await fetchApi<any[]>(`/restaurants/discover${query}`)
+    
+    // Normalize restaurant data to ensure consistent format
+    return restaurants.map(restaurant => normalizeRestaurant(restaurant))
   },
 }
 
@@ -348,16 +360,42 @@ export const favoritesApi = {
 export const userFavoritesApi = {
   // Toggle meal favorite status (for discovered meals from other users)
   async toggleMealFavorite(id: string): Promise<{ is_favorite: boolean }> {
-    return fetchApi<{ is_favorite: boolean }>(`/user-favorites/meals/${id}/toggle`, {
-      method: 'POST',
-    })
+    console.log('API: Toggling meal favorite for ID:', id)
+    try {
+      const result = await fetchApi<{ is_favorite: boolean }>(`/user-favorites/meals/${id}/toggle`, {
+        method: 'POST',
+      })
+      console.log('API: Meal favorite toggle result:', result)
+      
+      // Ensure is_favorite is a boolean
+      return {
+        ...result,
+        is_favorite: Boolean(result.is_favorite)
+      }
+    } catch (error) {
+      console.error('API: Error toggling meal favorite:', error)
+      throw error
+    }
   },
 
   // Toggle restaurant favorite status (for discovered restaurants from other users)  
   async toggleRestaurantFavorite(id: string): Promise<{ is_favorite: boolean }> {
-    return fetchApi<{ is_favorite: boolean }>(`/user-favorites/restaurants/${id}/toggle`, {
-      method: 'POST',
-    })
+    console.log('API: Toggling restaurant favorite for ID:', id)
+    try {
+      const result = await fetchApi<{ is_favorite: boolean }>(`/user-favorites/restaurants/${id}/toggle`, {
+        method: 'POST',
+      })
+      console.log('API: Restaurant favorite toggle result:', result)
+      
+      // Ensure is_favorite is a boolean
+      return {
+        ...result,
+        is_favorite: Boolean(result.is_favorite)
+      }
+    } catch (error) {
+      console.error('API: Error toggling restaurant favorite:', error)
+      throw error
+    }
   },
 }
 

@@ -97,7 +97,9 @@ function AppContent() {
               } />
               <Route path="/slot-machine" element={
                 <Layout>
-                  <SlotMachineDemo />
+                  <ErrorBoundary>
+                    <SlotMachineDemo />
+                  </ErrorBoundary>
                 </Layout>
               } />
               <Route path="/animation-demo" element={

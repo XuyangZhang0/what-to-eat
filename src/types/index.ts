@@ -40,17 +40,24 @@ export interface Restaurant {
   id: string;
   name: string;
   description?: string;
-  cuisine: string;
+  cuisine?: string; // Legacy support
+  cuisine_type?: string; // Backend format
   address?: string;
   phone?: string;
   website?: string;
   rating?: number;
-  priceRange?: '$' | '$$' | '$$$' | '$$$$';
+  priceRange?: '$' | '$$' | '$$$' | '$$$$'; // Legacy support
+  price_range?: '$' | '$$' | '$$$' | '$$$$'; // Backend format
   image?: string;
-  isOpen?: boolean;
+  isOpen?: boolean; // Current open/closed status - calculated by backend
   distance?: number; // in meters
-  isFavorite?: boolean;
+  isFavorite?: boolean; // Legacy support
+  is_favorite?: boolean; // Backend format
   openingHours?: WeeklyOpeningHours;
+  opening_hours?: any; // Backend format for opening hours
+  user_id?: number; // Backend format for owner identification
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface UserPreferences {

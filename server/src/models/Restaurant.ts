@@ -1,5 +1,6 @@
 import { db } from '@/database/connection.js';
 import { Restaurant, CreateRestaurantData, UpdateRestaurantData, SearchFilters, PaginationOptions, Tag } from './types.js';
+import { OpeningHoursService } from '@/services/openingHoursService.js';
 
 export class RestaurantModel {
   // Create a new restaurant
@@ -56,9 +57,14 @@ export class RestaurantModel {
     
     // Get tags
     const tags = this.getRestaurantTags(id);
+    
+    // Add isOpen status
+    const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+    
     return { 
       ...restaurant, 
       opening_hours: openingHours,
+      isOpen,
       tags 
     };
   }
@@ -132,13 +138,19 @@ export class RestaurantModel {
     const restaurants = stmt.all(...queryParams, limit, offset) as Restaurant[];
     
     // Add tags and parse opening hours for each restaurant
-    const restaurantsWithTags = restaurants.map((restaurant: any) => ({
-      ...restaurant,
-      opening_hours: restaurant.opening_hours 
+    const restaurantsWithTags = restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
         ? JSON.parse(restaurant.opening_hours)
-        : null,
-      tags: this.getRestaurantTags(restaurant.id)
-    }));
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
     
     return { restaurants: restaurantsWithTags, total };
   }
@@ -247,11 +259,15 @@ export class RestaurantModel {
     const restaurant = stmt.get(userId, userId) as any;
     if (!restaurant) return null;
     
+    const openingHours = restaurant.opening_hours 
+      ? JSON.parse(restaurant.opening_hours)
+      : null;
+    const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+    
     return { 
       ...restaurant, 
-      opening_hours: restaurant.opening_hours 
-        ? JSON.parse(restaurant.opening_hours)
-        : null,
+      opening_hours: openingHours,
+      isOpen,
       tags: this.getRestaurantTags(restaurant.id) 
     };
   }
@@ -327,13 +343,19 @@ export class RestaurantModel {
     
     const restaurants = stmt.all(userId, limit) as Restaurant[];
     
-    return restaurants.map((restaurant: any) => ({
-      ...restaurant,
-      opening_hours: restaurant.opening_hours 
+    return restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
         ? JSON.parse(restaurant.opening_hours)
-        : null,
-      tags: this.getRestaurantTags(restaurant.id)
-    }));
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
   }
 
   // Find all public restaurants (cross-user discovery)
@@ -401,13 +423,19 @@ export class RestaurantModel {
     const restaurants = stmt.all(...queryParams, limit, offset) as any[];
     
     // Add tags and parse JSON fields for each restaurant
-    const restaurantsWithTags = restaurants.map(restaurant => ({
-      ...restaurant,
-      opening_hours: restaurant.opening_hours 
+    const restaurantsWithTags = restaurants.map((restaurant: any) => {
+      const openingHours = restaurant.opening_hours 
         ? JSON.parse(restaurant.opening_hours)
-        : null,
-      tags: this.getRestaurantTags(restaurant.id)
-    }));
+        : null;
+      const isOpen = OpeningHoursService.isRestaurantOpen(openingHours);
+      
+      return {
+        ...restaurant,
+        opening_hours: openingHours,
+        isOpen,
+        tags: this.getRestaurantTags(restaurant.id)
+      };
+    });
     
     return { restaurants: restaurantsWithTags, total };
   }

@@ -113,7 +113,7 @@ export class RestaurantsController {
       // For own restaurants: use is_favorite field, for other user's restaurants: use user_favorites table
       restaurantsWithFavoriteStatus = restaurants.map(restaurant => ({
         ...restaurant,
-        isFavorite: restaurant.user_id === userId ? (restaurant.is_favorite === 1) : favoriteRestaurantIds.includes(restaurant.id)
+        isFavorite: restaurant.user_id === userId ? Boolean(restaurant.is_favorite) : favoriteRestaurantIds.includes(restaurant.id)
       }));
     } else {
       // For unauthenticated users, set all favorites to false
@@ -191,7 +191,7 @@ export class RestaurantsController {
       
       if (restaurant.user_id === userId) {
         // User's own restaurant, use the restaurant's is_favorite field
-        (restaurantWithFavoriteStatus as any).isFavorite = restaurant.is_favorite === 1;
+        (restaurantWithFavoriteStatus as any).isFavorite = Boolean(restaurant.is_favorite);
       } else {
         // Other user's restaurant, check user_favorites table
         const favoriteStmt = db.prepare(`

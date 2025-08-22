@@ -202,7 +202,7 @@ export class MealsController {
       
       if (meal.user_id === userId) {
         // User's own meal, use the meal's is_favorite field
-        mealWithFavoriteStatus.isFavorite = meal.is_favorite === 1 || meal.is_favorite === true;
+        (mealWithFavoriteStatus as any).isFavorite = Boolean(meal.is_favorite);
       } else {
         // Other user's meal, check user_favorites table
         const favoriteStmt = db.prepare(`
@@ -210,11 +210,11 @@ export class MealsController {
           WHERE user_id = ? AND item_type = 'meal' AND item_id = ?
         `);
         const isFavorite = favoriteStmt.get(userId, mealId);
-        mealWithFavoriteStatus.isFavorite = !!isFavorite;
+        (mealWithFavoriteStatus as any).isFavorite = !!isFavorite;
       }
     } else {
       // Not authenticated, set favorite as false
-      mealWithFavoriteStatus.isFavorite = false;
+      (mealWithFavoriteStatus as any).isFavorite = false;
     }
 
     res.json({

@@ -19,6 +19,8 @@ import { restaurantsApi, userFavoritesApi } from '@/services/api'
 import { useRestaurant } from '@/hooks/useRestaurant'
 import { useAuth } from '@/hooks/useAuth'
 import { Restaurant } from '@/types'
+import { getFavoriteStatus } from '@/utils/favorites'
+import { formatOpeningHoursForDisplay } from '@/utils/openingHours'
 
 // Parse opening hours if available
 const parseOpeningHours = (openingHours: any) => {
@@ -33,6 +35,7 @@ const parseOpeningHours = (openingHours: any) => {
     return null
   }
 }
+
 
 // Default menu highlights for display
 const defaultMenuHighlights = [
@@ -52,7 +55,15 @@ export default function RestaurantDetail() {
   // Update favorite status when restaurant data changes
   useEffect(() => {
     if (restaurant) {
-      setIsFavorite(restaurant.isFavorite || false)
+      // Check both formats for favorite status using utility function
+      const favoriteStatus = getFavoriteStatus(restaurant)
+      setIsFavorite(favoriteStatus)
+      console.log('Restaurant favorite status:', { 
+        name: restaurant.name,
+        isFavorite: restaurant.isFavorite,
+        is_favorite: restaurant.is_favorite,
+        resolved: favoriteStatus
+      })
     }
   }, [restaurant])
 
@@ -86,9 +97,13 @@ export default function RestaurantDetail() {
   }
 
   const openingHours = parseOpeningHours(restaurant.opening_hours)
+  const formattedHours = formatOpeningHoursForDisplay(openingHours)
 
   const handleFavoriteToggle = async () => {
     if (!id || isTogglingFavorite || !restaurant) return
+    
+    const currentStatus = isFavorite
+    console.log('Toggling favorite for restaurant:', restaurant.name, 'from:', currentStatus)
     
     setIsTogglingFavorite(true)
     try {
@@ -97,15 +112,26 @@ export default function RestaurantDetail() {
       // Check if this restaurant belongs to the current user
       const isOwnRestaurant = user && restaurant.user_id && String(restaurant.user_id) === String(user.id)
       
+      console.log('Restaurant ownership check:', {
+        isOwnRestaurant,
+        currentUserId: user?.id,
+        restaurantUserId: restaurant.user_id,
+        restaurantName: restaurant.name
+      })
+      
       if (isOwnRestaurant) {
         // Use the regular restaurant API for own restaurants
+        console.log('Using own restaurant API')
         result = await restaurantsApi.toggleFavorite(id)
         setIsFavorite(result.isFavorite || false)
       } else {
         // Use the cross-user favorites API for discovered restaurants
+        console.log('Using cross-user favorites API')
         result = await userFavoritesApi.toggleRestaurantFavorite(id)
         setIsFavorite(result.is_favorite || false)
       }
+      
+      console.log('Favorite toggle result:', result)
       
       // Dispatch custom event to notify other components of favorite update
       const newFavoriteStatus = result.isFavorite ?? result.is_favorite ?? false
@@ -117,8 +143,21 @@ export default function RestaurantDetail() {
           isFavorite: newFavoriteStatus
         }
       }))
+      
+      console.log('Successfully toggled favorite to:', newFavoriteStatus)
     } catch (error) {
       console.error('Failed to toggle favorite:', error)
+      console.error('Error details:', {
+        restaurantId: id,
+        restaurantName: restaurant.name,
+        userId: user?.id,
+        isOwnRestaurant: user && restaurant.user_id && String(restaurant.user_id) === String(user.id),
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error
+      })
       // Revert the UI state on error - no need to revert since we only update on success
     } finally {
       setIsTogglingFavorite(false)
@@ -376,8 +415,8 @@ export default function RestaurantDetail() {
 
           {activeTab === 'hours' && (
             <div className="space-y-3">
-              {openingHours ? (
-                Object.entries(openingHours).map(([day, hours], index) => (
+              {openingHours && Object.keys(formattedHours).length > 0 ? (
+                Object.entries(formattedHours).map(([day, hours], index) => (
                   <motion.div
                     key={day}
                     className="flex items-center justify-between p-3 bg-card rounded-lg border"
@@ -386,7 +425,9 @@ export default function RestaurantDetail() {
                     transition={{ delay: index * 0.05 }}
                   >
                     <span className="font-medium capitalize">{day}</span>
-                    <span className="text-sm text-muted-foreground">{hours as string}</span>
+                    <span className={`text-sm ${hours === 'Closed' ? 'text-muted-foreground' : 'text-foreground'}`}>
+                      {hours}
+                    </span>
                   </motion.div>
                 ))
               ) : (

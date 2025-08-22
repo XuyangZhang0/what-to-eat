@@ -134,7 +134,9 @@ export function getCuisineEmoji(cuisine?: string): string {
 /**
  * Get emoji for meal category
  */
-export function getMealCategoryEmoji(category: string): string {
+export function getMealCategoryEmoji(category?: string): string {
+  if (!category) return '🍽️'
+  
   const categoryEmojis: Record<string, string> = {
     'breakfast': '🌅',
     'lunch': '☀️',

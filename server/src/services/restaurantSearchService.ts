@@ -124,6 +124,12 @@ export class RestaurantSearchService {
     console.log('RestaurantSearchService: Has periods:', !!googleHours?.periods);
     console.log('RestaurantSearchService: Periods data:', JSON.stringify(googleHours?.periods, null, 2));
     
+    // Try weekday_text first if periods is not available
+    if (!googleHours?.periods && googleHours?.weekday_text) {
+      console.log('RestaurantSearchService: Using weekday_text fallback');
+      return this.convertFromWeekdayText(googleHours.weekday_text);
+    }
+    
     if (!googleHours?.periods) {
       console.log('RestaurantSearchService: No periods found, returning undefined');
       return undefined;
@@ -159,6 +165,81 @@ export class RestaurantSearchService {
     });
 
     console.log('RestaurantSearchService: Converted weekly hours:', JSON.stringify(weeklyHours, null, 2));
+    return weeklyHours;
+  }
+
+  /**
+   * Convert Google weekday_text to our format as fallback
+   */
+  private static convertFromWeekdayText(weekdayText: string[]): WeeklyOpeningHours | undefined {
+    const weeklyHours: WeeklyOpeningHours = {
+      sunday: { open: '09:00', close: '22:00', is_closed: true },
+      monday: { open: '09:00', close: '22:00', is_closed: true },
+      tuesday: { open: '09:00', close: '22:00', is_closed: true },
+      wednesday: { open: '09:00', close: '22:00', is_closed: true },
+      thursday: { open: '09:00', close: '22:00', is_closed: true },
+      friday: { open: '09:00', close: '22:00', is_closed: true },
+      saturday: { open: '09:00', close: '22:00', is_closed: true }
+    };
+
+    const dayNameMap: { [key: string]: keyof WeeklyOpeningHours } = {
+      'monday': 'monday',
+      'tuesday': 'tuesday', 
+      'wednesday': 'wednesday',
+      'thursday': 'thursday',
+      'friday': 'friday',
+      'saturday': 'saturday',
+      'sunday': 'sunday'
+    };
+
+    weekdayText.forEach(dayText => {
+      // Parse format like "Monday: 11:00 AM – 10:00 PM" or "Monday: Closed"
+      const match = dayText.match(/^(\w+):\s*(.+)$/i);
+      if (!match) return;
+
+      const dayName = match[1].toLowerCase() as keyof typeof dayNameMap;
+      const hoursText = match[2].trim();
+      
+      if (dayNameMap[dayName]) {
+        const mappedDay = dayNameMap[dayName];
+        
+        if (hoursText.toLowerCase().includes('closed')) {
+          weeklyHours[mappedDay] = {
+            open: '00:00',
+            close: '00:00',
+            is_closed: true
+          };
+        } else {
+          // Try to parse time ranges like "11:00 AM – 10:00 PM"
+          const timeMatch = hoursText.match(/(\d{1,2}):(\d{2})\s*(AM|PM)\s*[–-]\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (timeMatch) {
+            const openHour = parseInt(timeMatch[1]);
+            const openMin = timeMatch[2];
+            const openPeriod = timeMatch[3].toUpperCase();
+            const closeHour = parseInt(timeMatch[4]);
+            const closeMin = timeMatch[5];
+            const closePeriod = timeMatch[6].toUpperCase();
+
+            // Convert to 24-hour format
+            let openHour24 = openHour;
+            if (openPeriod === 'PM' && openHour !== 12) openHour24 += 12;
+            else if (openPeriod === 'AM' && openHour === 12) openHour24 = 0;
+
+            let closeHour24 = closeHour;
+            if (closePeriod === 'PM' && closeHour !== 12) closeHour24 += 12;
+            else if (closePeriod === 'AM' && closeHour === 12) closeHour24 = 0;
+
+            weeklyHours[mappedDay] = {
+              open: `${openHour24.toString().padStart(2, '0')}:${openMin}`,
+              close: `${closeHour24.toString().padStart(2, '0')}:${closeMin}`,
+              is_closed: false
+            };
+          }
+        }
+      }
+    });
+
+    console.log('RestaurantSearchService: Converted from weekday_text:', JSON.stringify(weeklyHours, null, 2));
     return weeklyHours;
   }
 

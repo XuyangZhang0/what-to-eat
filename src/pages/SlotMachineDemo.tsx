@@ -4,7 +4,9 @@ import { ArrowLeft, Settings, Volume2, VolumeX, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import SlotMachine from '@/components/SlotMachine'
+import PowerballPicker from '@/components/PowerballPicker'
 import { useShakeDetection } from '@/hooks/useShakeDetection'
+import { useAuth } from '@/hooks/useAuth'
 import { favoritesApi } from '@/services/api'
 import { favoriteMealsToSlotItems, favoriteRestaurantsToSlotItems } from '@/components/SlotMachine/utils'
 import type { SlotItem } from '@/components/SlotMachine/types'
@@ -13,12 +15,29 @@ import { cn } from '@/utils/cn'
 type DemoMode = 'meals' | 'restaurants' | 'mixed'
 
 export default function SlotMachineDemo() {
+  console.log('SlotMachineDemo component rendering...')
+  
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  
+  // Wrap auth hook in try-catch for safety
+  let authState: { isAuthenticated: boolean; user: any; token: string | null }
+  try {
+    authState = useAuth()
+  } catch (error) {
+    console.error('Auth hook error:', error)
+    authState = { isAuthenticated: false, user: null, token: null }
+  }
+  
+  const { isAuthenticated, user, token } = authState
   const [mode, setMode] = useState<DemoMode>('mixed')
   const [soundEnabled, setSoundEnabled] = useState(true)
   const [selectedItem, setSelectedItem] = useState<SlotItem | null>(null)
   const [isShakeTriggered, setIsShakeTriggered] = useState(false)
+  const [animationStyle, setAnimationStyle] = useState(() => {
+    const saved = localStorage.getItem('animation_style')
+    return saved === 'powerball' ? 'powerball' : 'slot-machine'
+  })
 
   // Shake detection
   const { isShaking } = useShakeDetection({
@@ -30,23 +49,55 @@ export default function SlotMachineDemo() {
   })
 
   // Fetch favorite meals only
-  const { data: meals = [], isLoading: isLoadingMeals } = useQuery({
+  const { 
+    data: meals = [], 
+    isLoading: isLoadingMeals, 
+    error: mealsError,
+    isError: isMealsError 
+  } = useQuery({
     queryKey: ['favorite-meals'],
     queryFn: () => favoritesApi.getFavoriteMeals(),
-    enabled: mode === 'meals' || mode === 'mixed',
+    enabled: isAuthenticated && (mode === 'meals' || mode === 'mixed'),
     staleTime: 30 * 1000, // Consider data stale after 30 seconds
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always' // Always refetch when component mounts
+    refetchOnMount: 'always', // Always refetch when component mounts
+    retry: (failureCount, error: any) => {
+      // Don't retry on authentication errors
+      if (error?.status === 401) return false
+      return failureCount < 2
+    },
+    onError: (error: any) => {
+      console.error('Error fetching favorite meals:', error)
+      if (error?.status === 401) {
+        console.warn('Authentication required for favorites')
+      }
+    }
   })
 
   // Fetch favorite restaurants only
-  const { data: restaurants = [], isLoading: isLoadingRestaurants } = useQuery({
+  const { 
+    data: restaurants = [], 
+    isLoading: isLoadingRestaurants, 
+    error: restaurantsError,
+    isError: isRestaurantsError 
+  } = useQuery({
     queryKey: ['favorite-restaurants'],
     queryFn: () => favoritesApi.getFavoriteRestaurants(),
-    enabled: mode === 'restaurants' || mode === 'mixed',
+    enabled: isAuthenticated && (mode === 'restaurants' || mode === 'mixed'),
     staleTime: 30 * 1000, // Consider data stale after 30 seconds
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always' // Always refetch when component mounts
+    refetchOnMount: 'always', // Always refetch when component mounts
+    retry: (failureCount, error: any) => {
+      // Don't retry on authentication errors
+      if (error?.status === 401) return false
+      return failureCount < 2
+    },
+    onError: (error: any) => {
+      console.error('Error fetching favorite restaurants:', error)
+      if (error?.status === 401) {
+        console.warn('Authentication required for favorites')
+      }
+    }
   })
 
   // Prepare slot items based on mode (favorites only)
@@ -66,6 +117,8 @@ export default function SlotMachineDemo() {
   })()
 
   const isLoading = isLoadingMeals || isLoadingRestaurants
+  const hasError = isMealsError || isRestaurantsError
+  const isAuthError = !isAuthenticated || (mealsError as any)?.status === 401 || (restaurantsError as any)?.status === 401
 
   const handleSelection = useCallback((item: SlotItem) => {
     setSelectedItem(item)
@@ -104,6 +157,19 @@ export default function SlotMachineDemo() {
     }
   }, [queryClient])
 
+  // Listen for animation style changes from localStorage
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'animation_style') {
+        const newStyle = e.newValue === 'powerball' ? 'powerball' : 'slot-machine'
+        setAnimationStyle(newStyle)
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [])
+
   const handleItemAction = () => {
     if (selectedItem) {
       if (selectedItem.type === 'meal') {
@@ -116,12 +182,28 @@ export default function SlotMachineDemo() {
 
   const handleRefresh = useCallback(() => {
     console.log('Manually refreshing favorites data...')
+    console.log('Auth status:', { isAuthenticated, user: !!user, token: !!token })
     queryClient.invalidateQueries({ queryKey: ['favorite-meals'] })
     queryClient.invalidateQueries({ queryKey: ['favorite-restaurants'] })
-  }, [queryClient])
+  }, [queryClient, isAuthenticated, user, token])
+
+  // Early authentication check and debug logging
+  useEffect(() => {
+    console.log('SlotMachineDemo mounted:', {
+      isAuthenticated,
+      hasUser: !!user,
+      hasToken: !!token,
+      mode,
+      mealsLength: meals.length,
+      restaurantsLength: restaurants.length,
+      isLoading,
+      hasError,
+      isAuthError
+    })
+  }, [isAuthenticated, user, token, mode, meals.length, restaurants.length, isLoading, hasError, isAuthError])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-800">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 dark:from-gray-900 dark:via-purple-900 dark:to-gray-800">
       {/* Header */}
       <div className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between p-4">
@@ -134,7 +216,7 @@ export default function SlotMachineDemo() {
           </button>
           
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-            Favorites Slot Machine
+            {animationStyle === 'slot-machine' ? 'Favorites Slot Machine' : 'Favorites Powerball Picker'}
           </h1>
           
           <div className="flex items-center gap-2">
@@ -189,32 +271,82 @@ export default function SlotMachineDemo() {
         {isLoading && (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-            <p className="text-gray-600 dark:text-gray-400">Loading items...</p>
+            <p className="text-gray-600 dark:text-gray-400">Loading favorites...</p>
           </div>
         )}
 
-        {/* Slot Machine */}
-        {!isLoading && slotItems.length > 0 && (
+        {/* Error State */}
+        {!isLoading && hasError && (
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              {isAuthError ? 'Authentication Required' : 'Something went wrong'}
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {isAuthError 
+                ? 'Please log in to access your favorites.' 
+                : 'Unable to load your favorites. Please try again.'}
+            </p>
+            <div className="flex gap-3 justify-center">
+              {isAuthError ? (
+                <button
+                  onClick={() => navigate('/login')}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Go to Login
+                </button>
+              ) : (
+                <button
+                  onClick={handleRefresh}
+                  className="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors"
+                >
+                  Try Again
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/')}
+                className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Go Home
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Animation Component */}
+        {!isLoading && !hasError && slotItems.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <SlotMachine
-              items={slotItems}
-              onSelection={handleSelection}
-              isShakeTriggered={isShakeTriggered}
-              onShakeReset={handleShakeReset}
-              soundEnabled={soundEnabled}
-              spinDuration={3000}
-              celebrationDuration={2500}
-              reelCount={3}
-            />
+            {animationStyle === 'slot-machine' ? (
+              <SlotMachine
+                items={slotItems}
+                onSelection={handleSelection}
+                isShakeTriggered={isShakeTriggered}
+                onShakeReset={handleShakeReset}
+                soundEnabled={soundEnabled}
+                spinDuration={3000}
+                celebrationDuration={2500}
+                reelCount={3}
+              />
+            ) : (
+              <PowerballPicker
+                items={slotItems}
+                onSelection={handleSelection}
+                isShakeTriggered={isShakeTriggered}
+                onShakeReset={handleShakeReset}
+                soundEnabled={soundEnabled}
+                spinDuration={3000}
+                celebrationDuration={2500}
+              />
+            )}
           </motion.div>
         )}
 
         {/* Empty State */}
-        {!isLoading && slotItems.length === 0 && (
+        {!isLoading && !hasError && slotItems.length === 0 && (
           <div className="text-center py-12">
             <div className="text-6xl mb-4">⭐</div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
@@ -336,16 +468,34 @@ export default function SlotMachineDemo() {
         {process.env.NODE_ENV === 'development' && (
           <div className="mt-8 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm">
             <h4 className="font-semibold mb-2">Debug Info:</h4>
-            <div className="space-y-1 text-gray-600 dark:text-gray-400">
+            <div className="grid grid-cols-2 gap-2 text-gray-600 dark:text-gray-400">
               <div>Mode: {mode}</div>
               <div>Items: {slotItems.length}</div>
               <div>Is Shaking: {isShaking ? 'Yes' : 'No'}</div>
               <div>Sound Enabled: {soundEnabled ? 'Yes' : 'No'}</div>
               <div>Selected: {selectedItem?.name || 'None'}</div>
+              <div>Auth: {isAuthenticated ? 'Yes' : 'No'}</div>
+              <div>User: {user?.username || 'None'}</div>
+              <div>Token: {token ? 'Present' : 'Missing'}</div>
+              <div>Loading Meals: {isLoadingMeals ? 'Yes' : 'No'}</div>
+              <div>Loading Restaurants: {isLoadingRestaurants ? 'Yes' : 'No'}</div>
+              <div>Meals Error: {isMealsError ? 'Yes' : 'No'}</div>
+              <div>Restaurants Error: {isRestaurantsError ? 'Yes' : 'No'}</div>
+              <div>Meals Count: {meals.length}</div>
+              <div>Restaurants Count: {restaurants.length}</div>
+              <div>Has Error: {hasError ? 'Yes' : 'No'}</div>
+              <div>Auth Error: {isAuthError ? 'Yes' : 'No'}</div>
             </div>
+            {(mealsError || restaurantsError) && (
+              <div className="mt-2 p-2 bg-red-100 dark:bg-red-900/30 rounded text-red-700 dark:text-red-300">
+                <div className="font-semibold">Errors:</div>
+                {mealsError && <div>Meals: {(mealsError as any)?.message || 'Unknown error'}</div>}
+                {restaurantsError && <div>Restaurants: {(restaurantsError as any)?.message || 'Unknown error'}</div>}
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
-  )
+    )
 }

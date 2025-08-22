@@ -94,6 +94,7 @@ export interface Restaurant {
   is_favorite: boolean;
   rating?: number;
   opening_hours?: WeeklyOpeningHours;
+  isOpen?: boolean; // Current open/closed status
   created_at: string;
   updated_at: string;
   tags?: Tag[];
